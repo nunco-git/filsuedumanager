@@ -102,6 +102,14 @@
   .ocr-progress { font-size: 13px; color: #2563eb; text-align: center; margin: 10px 0; }
   .cert-preview { max-width: 100%; max-height: 220px; border: 1px solid #e2e8f0; border-radius: 8px; margin: 10px 0; display: block; }
 
+  .xr-row { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-top: 8px; background: #f8fafc; }
+  .xr-row-title { font-size: 12.5px; font-weight: bold; color: #2563eb; margin-bottom: 6px; }
+  .xr-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .xr-line label { font-size: 11.5px; font-weight: bold; color: #64748b; white-space: nowrap; }
+  .xr-line input[type="text"], .xr-line select { padding: 5px 7px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .xr-line input[type="text"] { flex: 1 1 120px; min-width: 90px; }
+  .xr-line input[type="number"] { width: 52px; padding: 5px 7px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 6px; }
+
   @media (max-width: 640px) {
     body { padding: 8px; } .container { padding: 16px; border-radius: 12px; }
     .header h1 { font-size: 19px; } .tabs { flex-wrap: wrap; }
@@ -354,6 +362,16 @@
       <div class="form-group">
         <label><input type="checkbox" id="courseCertRequired" checked style="width:auto;" /> 이수증 첨부 필요</label>
       </div>
+
+      <details style="margin:14px 0; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
+        <summary style="cursor:pointer; font-weight:bold; font-size:13.5px; color:#334155;">📄 이수증 PDF 자동인식 규칙 설정 (선택)</summary>
+        <p class="form-hint" style="margin-top:8px;">
+          비워두면 일반적인 라벨(성명/과정/발급기관 등)로 자동 인식합니다. 우리 기관이 쓰는 이수증 서식이 따로 있다면, 아래에서 "기준단어" 기준으로 값을 가져올 위치를 지정해두면 이 교육과정에 한해 그 규칙을 먼저 시도합니다.
+          (예: "학습시간" 뒤 → 해당 값, "성명" 다음 줄 → 이수기관)
+        </p>
+        <div id="extractRuleRows"></div>
+      </details>
+
       <div class="btn-row" style="margin-top:16px;">
         <button type="button" class="btn btn-secondary" onclick="closeCourseModal()">취소</button>
         <button type="submit" class="btn">저장</button>
@@ -937,11 +955,13 @@ function openCourseModal(courseId) {
     document.getElementById('courseTarget').value = c.target;
     document.getElementById('courseTargetDetail').value = c.targetDetail || '';
     document.getElementById('courseCertRequired').checked = !!c.certRequired;
+    populateExtractRuleRows(c.extractRules || {});
   } else {
     document.getElementById('courseModalTitle').textContent = '새 의무교육 등록';
     ['courseName','courseSites','courseCurriculumNames','courseHours','courseDeadline','courseTargetDetail'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('courseTarget').value = 'all';
     document.getElementById('courseCertRequired').checked = true;
+    populateExtractRuleRows({});
   }
   onCourseTargetChange();
 }
@@ -963,6 +983,7 @@ async function saveCourse(e) {
     target: document.getElementById('courseTarget').value,
     targetDetail: document.getElementById('courseTargetDetail').value.trim(),
     certRequired: document.getElementById('courseCertRequired').checked,
+    extractRules: collectExtractRules(),
     managerId: state.managerId
   };
   const orgRef = db.collection('institutions').doc(state.orgId);
@@ -1208,15 +1229,17 @@ async function startBulkUpload() {
     progressEl.textContent = `(${i+1}/${files.length}) ${file.name} 인식 중...`;
     try {
       const { text, guess } = await ocrExtractFromFile(file, msg => { progressEl.textContent = `(${i+1}/${files.length}) ${file.name} - ${msg}`; });
-      const guessedRoster = (state.deptRoster || []).find(p => p.name === guess.guessedName);
-      const key = guessedRoster ? employeeMatchKey({ employeeCode: guessedRoster.employeeCode, deptName: state.deptName, team: guessedRoster.team, name: guessedRoster.name }) : '';
       const courseInfo = (state.employeeCourseCache || {})[courseId] || {};
+      const custom = applyExtractRules(text, courseInfo.extractRules);
+      const nameGuess = custom.personName || guess.guessedName;
+      const guessedRoster = (state.deptRoster || []).find(p => p.name === nameGuess);
+      const key = guessedRoster ? employeeMatchKey({ employeeCode: guessedRoster.employeeCode, deptName: state.deptName, team: guessedRoster.team, name: guessedRoster.name }) : '';
       const matchedCurriculum = (courseInfo.curriculumNames || []).find(n => n && text.indexOf(n) >= 0);
       bulkEntries.push({
         fileName: file.name, courseId,
-        courseName: matchedCurriculum || guess.courseNameGuess || (courseInfo.curriculumNames||[])[0] || courseInfo.name || '',
-        matchedKey: key, manualName: key ? '' : (guess.guessedName || ''),
-        certNumber: guess.certNumber, certOrg: guess.certOrg, certDate: guess.certDate,
+        courseName: matchedCurriculum || custom.courseName || guess.courseNameGuess || (courseInfo.curriculumNames||[])[0] || courseInfo.name || '',
+        matchedKey: key, manualName: key ? '' : (nameGuess || ''),
+        certNumber: custom.certNumber || guess.certNumber, certOrg: custom.certOrg || guess.certOrg, certDate: custom.certDate || guess.certDate,
         status: '확인 대기'
       });
     } catch (e) {
@@ -1326,20 +1349,241 @@ function openCertModal(courseId) {
 }
 function closeCertModal() { document.getElementById('certModal').classList.add('hidden'); state.certContext = null; }
 
-/* 파일(이미지/PDF) 하나를 브라우저 안에서 이미지로 변환 후 OCR을 돌려 텍스트를 반환한다.
-   개별 제출 모달과 부서 일괄 업로드가 함께 사용하는 공용 함수. */
+/* =====================================================================
+   담당자가 사전 설정할 수 있는 "이수증 PDF 자동인식 규칙" 엔진.
+   각 필드(이수증번호/이름/교육과정명/이수기관/이수일자)마다 "기준단어" 기준으로
+   뒤/앞/다음줄/사이값/자기자신 + 몇 번째로 나온 것인지(순번) + 몇 단어·몇 글자를 가져올지(범위)를
+   담당자가 교육과정 등록 화면에서 지정해두면, 직원이 이수증을 올렸을 때 그 규칙을 먼저 시도한다.
+   규칙을 비워두면(기준단어 없음) 기존 일반 라벨 기반 추정(guessCertFields)으로 자동 대체된다.
+===================================================================== */
+const EXTRACT_RULE_FIELDS = [
+  { key: 'certNumber', label: '이수증번호' },
+  { key: 'personName', label: '이름(직원 매칭용)' },
+  { key: 'courseName', label: '교육과정명' },
+  { key: 'certOrg', label: '이수기관' },
+  { key: 'certDate', label: '이수일자' }
+];
+
+function renderExtractRuleRows() {
+  const wrap = document.getElementById('extractRuleRows');
+  if (!wrap || wrap.dataset.built) return;
+  wrap.dataset.built = '1';
+  wrap.innerHTML = EXTRACT_RULE_FIELDS.map(f => `
+    <div class="xr-row">
+      <div class="xr-row-title">${escHtml(f.label)}</div>
+      <div class="xr-line">
+        <label>기준단어:</label>
+        <input type="text" id="xrKey_${f.key}" placeholder="예: 학습시간, 성명, 과정" />
+        <label>탐색방식:</label>
+        <select id="xrDir_${f.key}" onchange="toggleXrBetween('${f.key}')">
+          <option value="after" selected>기준단어 뒤</option>
+          <option value="before">기준단어 앞</option>
+          <option value="nextLine">다음 줄 전체</option>
+          <option value="between">기준단어 사이값</option>
+          <option value="self">기준단어 자체</option>
+        </select>
+      </div>
+      <div class="xr-line xr-between" id="xrBetweenRow_${f.key}" style="display:none;">
+        <label>끝 기준단어:</label>
+        <input type="text" id="xrKeyEnd_${f.key}" placeholder="예: 호, 시간" />
+      </div>
+      <div class="xr-line">
+        <label>순번:</label>
+        <select id="xrIdx_${f.key}" onchange="toggleXrIdxNum('${f.key}')">
+          <option value="1" selected>첫 번째</option>
+          <option value="2">두 번째</option>
+          <option value="3">세 번째</option>
+          <option value="n">N번째</option>
+          <option value="last">마지막</option>
+        </select>
+        <input type="number" id="xrIdxNum_${f.key}" min="1" value="1" style="display:none;" />
+        <label>범위:</label>
+        <select id="xrRange_${f.key}" onchange="toggleXrChars('${f.key}')">
+          <option value="word" selected>1단어</option>
+          <option value="word2">2단어</option>
+          <option value="word3">3단어</option>
+          <option value="word4">4단어</option>
+          <option value="line">줄 끝까지</option>
+          <option value="chars">N글자</option>
+        </select>
+        <input type="number" id="xrChars_${f.key}" min="1" value="6" style="display:none;" />
+      </div>
+    </div>`).join('');
+}
+function toggleXrBetween(key) {
+  document.getElementById('xrBetweenRow_' + key).style.display = document.getElementById('xrDir_' + key).value === 'between' ? 'flex' : 'none';
+}
+function toggleXrIdxNum(key) {
+  document.getElementById('xrIdxNum_' + key).style.display = document.getElementById('xrIdx_' + key).value === 'n' ? 'inline-block' : 'none';
+}
+function toggleXrChars(key) {
+  document.getElementById('xrChars_' + key).style.display = document.getElementById('xrRange_' + key).value === 'chars' ? 'inline-block' : 'none';
+}
+function collectExtractRules() {
+  renderExtractRuleRows();
+  const rules = {};
+  EXTRACT_RULE_FIELDS.forEach(f => {
+    const key = (document.getElementById('xrKey_' + f.key).value || '').trim();
+    if (!key) return; // 기준단어를 비워두면 이 필드는 규칙 미설정(일반 자동인식으로 대체)
+    rules[f.key] = {
+      key,
+      dir: document.getElementById('xrDir_' + f.key).value,
+      keyEnd: (document.getElementById('xrKeyEnd_' + f.key).value || '').trim(),
+      idx: document.getElementById('xrIdx_' + f.key).value,
+      idxNum: parseInt(document.getElementById('xrIdxNum_' + f.key).value, 10) || 1,
+      range: document.getElementById('xrRange_' + f.key).value,
+      charsNum: parseInt(document.getElementById('xrChars_' + f.key).value, 10) || 1
+    };
+  });
+  return rules;
+}
+function populateExtractRuleRows(rules) {
+  renderExtractRuleRows();
+  rules = rules || {};
+  EXTRACT_RULE_FIELDS.forEach(f => {
+    const r = rules[f.key] || {};
+    document.getElementById('xrKey_' + f.key).value = r.key || '';
+    document.getElementById('xrDir_' + f.key).value = r.dir || 'after';
+    document.getElementById('xrKeyEnd_' + f.key).value = r.keyEnd || '';
+    document.getElementById('xrIdx_' + f.key).value = r.idx || '1';
+    document.getElementById('xrIdxNum_' + f.key).value = r.idxNum || 1;
+    document.getElementById('xrRange_' + f.key).value = r.range || 'word';
+    document.getElementById('xrChars_' + f.key).value = r.charsNum || 6;
+    toggleXrBetween(f.key); toggleXrIdxNum(f.key); toggleXrChars(f.key);
+  });
+}
+
+function parseDateFromText(str) {
+  if (!str) return '';
+  let m = str.match(/(20\d{2})[.\-\/년]\s?(\d{1,2})[.\-\/월]\s?(\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  m = str.match(/(20\d{2})(\d{2})(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  return '';
+}
+function takeRange(str, rule, fromEnd) {
+  str = (str || '').trim();
+  if (!str) return '';
+  if (rule.range === 'line') return str;
+  if (rule.range === 'chars') {
+    const n = parseInt(rule.charsNum, 10) || 1;
+    return (fromEnd ? str.slice(-n) : str.slice(0, n)).trim();
+  }
+  const wordCountMap = { word: 1, word2: 2, word3: 3, word4: 4 };
+  const n = wordCountMap[rule.range] || 1;
+  const words = str.split(/\s+/).filter(Boolean);
+  if (!words.length) return '';
+  return (fromEnd ? words.slice(-n) : words.slice(0, n)).join(' ');
+}
+// 담당자가 설정한 규칙(rule) 하나를 텍스트(text)에 적용해 값을 추출한다.
+function extractByRule(text, rule) {
+  if (!rule || !rule.key) return '';
+  const norm = (text || '').replace(/\r/g, '');
+  const lines = norm.split('\n');
+  const occurrences = [];
+  lines.forEach((line, li) => {
+    let start = 0;
+    while (true) {
+      const idx = line.indexOf(rule.key, start);
+      if (idx < 0) break;
+      occurrences.push({ lineIdx: li, charIdx: idx });
+      start = idx + rule.key.length;
+    }
+  });
+  if (!occurrences.length) return '';
+  let chosen;
+  if (rule.idx === 'last') chosen = occurrences[occurrences.length - 1];
+  else {
+    const n = rule.idx === 'n' ? (parseInt(rule.idxNum, 10) || 1) : (parseInt(rule.idx, 10) || 1);
+    chosen = occurrences[n - 1];
+  }
+  if (!chosen) return '';
+  const line = lines[chosen.lineIdx];
+  const afterKeyIdx = chosen.charIdx + rule.key.length;
+
+  if (rule.dir === 'self') return rule.key;
+  if (rule.dir === 'nextLine') return (lines[chosen.lineIdx + 1] || '').trim();
+  if (rule.dir === 'before') return takeRange(line.slice(0, chosen.charIdx), rule, true);
+  if (rule.dir === 'between') {
+    if (!rule.keyEnd) return '';
+    const endIdx = line.indexOf(rule.keyEnd, afterKeyIdx);
+    if (endIdx < 0) return '';
+    return line.slice(afterKeyIdx, endIdx).replace(/^[:\s∙·.=]+/, '').trim();
+  }
+  return takeRange(line.slice(afterKeyIdx).replace(/^[:\s∙·.=]+/, ''), rule, false);
+}
+// 교육과정에 설정된 규칙들을 한꺼번에 적용한다. 규칙이 없는 필드는 결과에서 빠지므로(=일반 자동인식으로 대체) 호출부에서 폴백 처리한다.
+function applyExtractRules(text, extractRules) {
+  const rules = extractRules || {};
+  const out = {};
+  EXTRACT_RULE_FIELDS.forEach(f => {
+    const r = rules[f.key];
+    if (!r || !r.key) return;
+    let v = extractByRule(text, r);
+    if (f.key === 'certDate' && v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      v = parseDateFromText(v) || parseDateFromText(text) || v;
+    }
+    if (v) out[f.key] = v;
+  });
+  return out;
+}
+
+/* PDF 첫 페이지를 이미지로 렌더링(미리보기 및 OCR 대체용) */
+async function renderPdfPageToDataUrl(file, pageNum) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const page = await pdf.getPage(pageNum || 1);
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width; canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas.toDataURL('image/png');
+}
+/* PDF에 실제로 담긴 글자(텍스트 레이어)를 그대로 추출한다. 대부분의 공식 이수증 PDF는 이미지가 아니라
+   실제 글자로 만들어져 있어서, 이 방식이 이미지로 바꿔 OCR을 돌리는 것보다 훨씬 빠르고 정확하다. */
+async function extractPdfTextLayer(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let fullText = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    let lastY = null, line = '';
+    content.items.forEach(item => {
+      const y = Math.round(item.transform[5]);
+      if (lastY !== null && Math.abs(y - lastY) > 2) {
+        fullText += line.trim() + '\n';
+        line = '';
+      }
+      line += item.str + ' ';
+      lastY = y;
+    });
+    if (line.trim()) fullText += line.trim() + '\n';
+  }
+  return fullText.trim();
+}
+
+/* 파일(이미지/PDF) 하나에서 텍스트를 얻어 반환한다. 개별 제출 모달과 부서 일괄 업로드가 함께 쓰는 공용 함수.
+   PDF는 우선 실제 글자(텍스트 레이어) 추출을 시도하고, 글자가 거의 없는(스캔 이미지형) PDF일 때만
+   기존처럼 이미지로 변환 후 OCR(Tesseract)을 돌린다. */
 async function ocrExtractFromFile(file, onProgress) {
+  if (file.type === 'application/pdf') {
+    if (onProgress) onProgress('PDF에 담긴 글자를 직접 확인하는 중...');
+    try {
+      const pdfText = await extractPdfTextLayer(file);
+      if (pdfText && pdfText.replace(/\s/g, '').length >= 10) {
+        const imageSource = await renderPdfPageToDataUrl(file, 1);
+        return { imageSource, text: pdfText, guess: guessCertFields(pdfText) };
+      }
+    } catch (e) {
+      console.warn('PDF 텍스트 레이어 추출 실패 - 이미지로 변환 후 OCR로 재시도합니다.', e);
+    }
+  }
+
   let imageSource;
   if (file.type === 'application/pdf') {
-    if (onProgress) onProgress('PDF에서 첫 페이지를 이미지로 변환하는 중...');
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 2.0 });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width; canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    imageSource = canvas.toDataURL('image/png');
+    if (onProgress) onProgress('텍스트가 없는(스캔 이미지형) PDF로 보여 이미지로 변환 중...');
+    imageSource = await renderPdfPageToDataUrl(file, 1);
   } else {
     imageSource = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1466,14 +1710,18 @@ async function handleCertFileSelected() {
     const { imageSource, text, guess } = await ocrExtractFromFile(file, msg => { progressEl.textContent = msg; });
     previewImg.src = imageSource;
     previewImg.classList.remove('hidden');
-    document.getElementById('certNumber').value = guess.certNumber;
-    document.getElementById('certOrg').value = guess.certOrg;
-    document.getElementById('certDate').value = guess.certDate;
-    // 이 교육과정에 등록된 "인정 교육과정명" 중 이수증 텍스트에 그대로 적힌 것이 있으면 그걸로 맞춰주고,
-    // 없으면 이수증에서 "과정/강좌명" 뒤에 적힌 문장으로라도 채워준다.
+    // 담당자가 이 교육과정에 "이수증 PDF 자동인식 규칙"을 설정해두었으면 그 규칙을 먼저 적용하고,
+    // 설정하지 않은 필드는 일반 라벨 기반 자동인식(guess) 값으로 채운다.
     const course = (state.employeeCourseCache || {})[state.certContext.courseId] || {};
+    const custom = applyExtractRules(text, course.extractRules);
+    document.getElementById('certNumber').value = custom.certNumber || guess.certNumber;
+    document.getElementById('certOrg').value = custom.certOrg || guess.certOrg;
+    document.getElementById('certDate').value = custom.certDate || guess.certDate;
+    // 이 교육과정에 등록된 "인정 교육과정명" 중 이수증 텍스트에 그대로 적힌 것이 있으면 그걸로 맞춰주고,
+    // 없으면 사전설정 규칙 또는 "과정/강좌명" 뒤에 적힌 문장으로라도 채워준다.
     const matched = (course.curriculumNames || []).find(n => n && text.indexOf(n) >= 0);
     if (matched) document.getElementById('certCourseNameInput').value = matched;
+    else if (custom.courseName) document.getElementById('certCourseNameInput').value = custom.courseName;
     else if (guess.courseNameGuess) document.getElementById('certCourseNameInput').value = guess.courseNameGuess;
     progressEl.classList.add('hidden');
     document.getElementById('certFormWrap').classList.remove('hidden');
