@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>의무교육 이수관리 시스템 - 체험판</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" crossorigin="anonymous"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Pretendard Variable', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    margin: 0; padding: 24px;
+    background-color: #f8fafc; color: #1e293b;
+    display: flex; justify-content: center; min-height: 100vh;
+  }
+  .container { width: 100%; max-width: 1200px; }
+  .panel { background: white; border-radius: 16px; padding: 32px; box-shadow: 0 6px 20px rgba(0,0,0,0.05); }
+
+  .demo-banner {
+    background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 100%); border: 1px solid #fbbf24; border-radius: 12px;
+    padding: 14px 18px; margin-bottom: 18px; font-size: 13.5px; color: #92400e; line-height: 1.6;
+  }
+  .demo-banner strong { color: #78350f; }
+
+  .header { text-align: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px; margin-bottom: 20px; }
+  .header h1 { font-family: 'Jua', sans-serif; font-weight: 400; font-size: 1.9rem; color: #9a3412; margin: 0 0 6px 0; }
+  .header p { color: #64748b; font-size: 14px; margin: 0; }
+
+  .role-tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+  .role-tab {
+    flex: 1; padding: 16px; border: 2px solid #e2e8f0; border-radius: 12px; background: white; cursor: pointer;
+    text-align: center; transition: all .15s;
+  }
+  .role-tab:hover { border-color: #93c5fd; background: #f0f6ff; }
+  .role-tab.active { border-color: #2563eb; background: #eff6ff; box-shadow: 0 4px 12px rgba(37,99,235,.15); }
+  .role-tab .role-icon { font-size: 26px; }
+  .role-tab .role-name { font-weight: bold; font-size: 15px; margin: 4px 0 2px; color: #1e293b; }
+  .role-tab .role-desc { font-size: 12px; color: #94a3b8; }
+
+  .form-group { margin-bottom: 14px; text-align: left; }
+  .form-group label { display: block; font-size: 13.5px; font-weight: bold; margin-bottom: 5px; color: #334155; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 10px; font-size: 14.5px; border: 1px solid #cbd5e1; border-radius: 8px; outline: none;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: #2563eb; }
+  .form-hint { font-size: 12px; color: #94a3b8; margin: 4px 0 0 0; }
+
+  .btn { width: 100%; padding: 10px; background: #2563eb; color: white; border: none; border-radius: 8px; font-size: 14.5px; font-weight: bold; cursor: pointer; }
+  .btn:hover { background: #1d4ed8; }
+  .btn-secondary { background: #64748b; } .btn-secondary:hover { background: #475569; }
+  .btn-excel { background: #16a34a; } .btn-excel:hover { background: #15803d; }
+  .btn-danger { background: #ef4444; } .btn-danger:hover { background: #dc2626; }
+  .btn-sm { width: auto; padding: 6px 12px; font-size: 12.5px; display: inline-block; }
+  .btn-row { display: flex; gap: 8px; } .btn-row .btn { width: auto; flex: 1; }
+
+  .section-heading { font-size: 16.5px; font-weight: bold; color: #1e293b; margin: 24px 0 8px 0; padding-bottom: 6px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; }
+  .section-heading:first-child { margin-top: 0; }
+  .section-sub { font-size: 12.5px; color: #94a3b8; margin: -2px 0 12px 0; }
+
+  .card-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: bold; }
+  .badge-ok { background: #dcfce7; color: #15803d; }
+  .badge-no { background: #fef2f2; color: #b91c1c; }
+
+  table.data-table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; }
+  table.data-table th, table.data-table td { border: 1px solid #e2e8f0; padding: 7px 9px; text-align: left; }
+  table.data-table th { background: #f1f5f9; color: #334155; }
+  .table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; }
+
+  .hidden { display: none !important; }
+  .status-banner { font-size: 12.5px; padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; text-align: center; }
+  .status-banner.error { background: #fef2f2; color: #b91c1c; }
+  .status-banner.ok { background: #f0fdf4; color: #166534; }
+  .status-banner.info { background: #eff6ff; color: #1d4ed8; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+  .modal-box { background: white; border-radius: 14px; padding: 24px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+  .modal-box h2 { margin-top: 0; font-size: 17px; }
+
+  .ocr-progress { font-size: 12.5px; color: #2563eb; text-align: center; margin: 10px 0; }
+  .cert-preview { max-width: 100%; max-height: 200px; border: 1px solid #e2e8f0; border-radius: 8px; margin: 10px 0; display: block; }
+
+  .steps { display:flex; gap:8px; margin-bottom:16px; flex-wrap: wrap; }
+  .step-chip { background:#eff6ff; color:#1d4ed8; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:bold; }
+  .step-chip.done { background:#dcfce7; color:#15803d; }
+
+  @media (max-width: 640px) {
+    body { padding: 8px; } .panel { padding: 16px; border-radius: 12px; }
+    .role-tabs { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="panel">
+
+    <div class="demo-banner">
+      🧪 <strong>이것은 체험용 테스트 페이지입니다.</strong> 실제 데이터베이스(Firebase)에 연결되어 있지 않으며, 지금 만든 부서·직원·이수기록은 전부 <strong>이 브라우저 창 안에서만</strong> 임시로 보관됩니다.
+      새로고침하거나 창을 닫으면 사라집니다. 이수증 자동인식(OCR)과 엑셀 다운로드는 실제 기능 그대로 동작하니 자유롭게 테스트해보세요.
+      <button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="resetDemo()">전체 초기화</button>
+    </div>
+
+    <div class="header">
+      <h1>📚 의무교육 이수관리 시스템 - 체험판</h1>
+      <p>아래에서 역할을 선택하면, 그 역할이 실제로 무엇을 할 수 있는지 바로 체험해볼 수 있습니다.</p>
+    </div>
+
+    <div class="role-tabs">
+      <div class="role-tab active" id="roleTabSuper" onclick="switchRole('super')">
+        <div class="role-icon">🏢</div><div class="role-name">총괄관리자</div><div class="role-desc">부서·담당자 등록, 기록 관리</div>
+      </div>
+      <div class="role-tab" id="roleTabManager" onclick="switchRole('manager')">
+        <div class="role-icon">🧑‍💼</div><div class="role-name">의무교육 담당자</div><div class="role-desc">교육과정 등록, 이수현황 다운로드</div>
+      </div>
+      <div class="role-tab" id="roleTabEmployee" onclick="switchRole('employee')">
+        <div class="role-icon">🙋</div><div class="role-name">부서원(직원)</div><div class="role-desc">이수증 제출, 부서 일괄 업로드</div>
+      </div>
+    </div>
+
+    <!-- =================== 총괄관리자 =================== -->
+    <div id="viewSuper">
+      <div class="status-banner info">예시 기관 "<strong id="superOrgName"></strong>"의 총괄관리자로 체험 중입니다. 실제로는 기관 이메일/네이버 이메일 인증을 거쳐 로그인합니다.</div>
+
+      <div class="section-heading">부서 관리 (엑셀 업로드는 실제 기능과 동일한 방식으로, 여기서는 직접 추가로 체험)</div>
+      <p class="section-sub">부서를 추가하면 접속 비밀번호가 자동 발급됩니다. 실제 서비스에서는 기관명+부서명 필수 엑셀 업로드도 가능합니다.</p>
+      <div class="card-box">
+        <div class="btn-row">
+          <input type="text" id="superNewDeptName" placeholder="새 부서명 (예: 기획예산과)" />
+          <button class="btn btn-sm" style="flex:0 0 auto;" onclick="demoAddDept()">추가</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>부서명</th><th>명단 인원</th><th>접속 비밀번호</th><th></th></tr></thead><tbody id="superDeptTable"></tbody></table></div>
+
+      <div class="section-heading">의무교육 담당자 관리</div>
+      <div class="card-box">
+        <div class="btn-row">
+          <input type="text" id="superNewMgrName" placeholder="담당자 성명" />
+          <input type="email" id="superNewMgrEmail" placeholder="담당자 이메일(예시)" />
+          <button class="btn btn-sm" style="flex:0 0 auto;" onclick="demoAddManager()">추가</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>성명</th><th>이메일</th><th>등록 교육과정 수</th></tr></thead><tbody id="superMgrTable"></tbody></table></div>
+
+      <div class="section-heading">전체 교육과정 · 제출 기록</div>
+      <p class="section-sub">제출된 기록은 누구도 수정할 수 없고, 총괄관리자만 사유를 남기고 삭제(정정)할 수 있습니다. 실제 삭제를 눌러 이 원칙을 체험해보세요.</p>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>담당자</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>제출 인원</th><th></th></tr></thead><tbody id="superCourseTable"></tbody></table></div>
+    </div>
+
+    <!-- =================== 담당자 =================== -->
+    <div id="viewManager" class="hidden">
+      <div class="status-banner info">
+        지금 로그인한 담당자: <select id="managerSelect" onchange="onManagerSelectChange()" style="display:inline-block; width:auto; padding:4px 8px; border-radius:6px; border:1px solid #cbd5e1;"></select>
+        (실제로는 총괄관리자가 등록해둔 본인 이메일로 구글 로그인해서 인증됩니다)
+      </div>
+
+      <div class="section-heading">교육과정 등록·관리 <button class="btn btn-sm" style="width:auto;" onclick="openCourseModal()">+ 새 교육과정</button></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>이수증필요</th><th></th></tr></thead><tbody id="managerCourseTable"></tbody></table></div>
+
+      <div class="section-heading">이수현황 다운로드 <span style="font-weight:normal; font-size:12px; color:#94a3b8;">- 실제 엑셀 파일이 다운로드됩니다</span></div>
+      <div class="card-box">
+        <div class="form-group"><label>교육과정 선택</label><select id="managerDownloadCourse"></select></div>
+        <button class="btn btn-excel" onclick="downloadDemoResults()">이수현황 엑셀 다운로드 (전체 명단 + 제출여부)</button>
+      </div>
+    </div>
+
+    <!-- =================== 부서원 =================== -->
+    <div id="viewEmployee" class="hidden">
+      <div class="steps">
+        <span class="step-chip" id="stepChip1">① 나 선택하기</span>
+        <span class="step-chip" id="stepChip2">② 이수증 제출</span>
+        <span class="step-chip" id="stepChip3">③ 담당자가 엑셀로 확인</span>
+      </div>
+
+      <div id="employeePickWrap">
+        <div class="status-banner info">실제로는 부서명+부서비밀번호를 확인한 뒤 구글 로그인으로 본인을 확인합니다. 여기서는 테스트를 위해 바로 "나"를 골라주세요.</div>
+        <div class="form-group">
+          <label>부서 선택</label>
+          <select id="empDeptSelect" onchange="onEmpDeptChange()"></select>
+        </div>
+        <div class="form-group">
+          <label>나(직원) 선택</label>
+          <select id="empPersonSelect"></select>
+        </div>
+        <button class="btn" onclick="enterDemoEmployee()">이 사람으로 체험 시작</button>
+
+        <p class="section-sub" style="margin-top:16px;">명단에 없는 새 직원으로 자가등록 체험을 하려면:</p>
+        <div class="card-box">
+          <div class="form-group"><label>부서</label><select id="empNewDeptSelect"></select></div>
+          <div class="form-group"><label>이름</label><input type="text" id="empNewName" placeholder="예: 김신입" /></div>
+          <div class="form-group"><label>고유번호(사번, 선택)</label><input type="text" id="empNewCode" placeholder="예: 20260099" /></div>
+          <button class="btn btn-secondary" onclick="registerDemoEmployee()">새 직원으로 등록하고 시작</button>
+        </div>
+      </div>
+
+      <div id="employeeDashWrap" class="hidden">
+        <div class="status-banner ok">
+          <strong id="empLabel"></strong>(으)로 접속 중입니다.
+          <button class="btn btn-sm btn-secondary" style="width:auto; margin-left:8px;" onclick="exitDemoEmployee()">다른 사람으로 바꾸기</button>
+        </div>
+
+        <div class="section-heading">내 의무교육 이수 현황</div>
+        <p class="section-sub">[이수증 제출]을 누르고 아무 사진/PDF 파일이나 올려보세요. 실제 OCR로 텍스트를 인식한 뒤 확인 화면을 보여줍니다. 저장하면 그 기록은 수정·삭제할 수 없습니다.</p>
+        <div id="empCourseList"></div>
+
+        <div class="section-heading">부서 이수증 일괄 업로드 (서무 담당자 체험)</div>
+        <p class="section-sub">여러 파일을 한꺼번에 올려 담당 직원을 확인해가며 저장하는 화면입니다. 명단에 이름이 적힌 파일이면 자동으로 추정해줍니다.</p>
+        <div class="card-box">
+          <div class="form-group"><label>교육과정 선택</label><select id="bulkCourseSelect"></select></div>
+          <div class="form-group"><label>이수증 파일 (여러 개 선택 가능)</label><input type="file" id="bulkFiles" accept="image/*,.pdf" multiple /></div>
+          <button class="btn" onclick="startBulkUpload()">파일 인식 시작</button>
+          <p id="bulkProgress" class="ocr-progress hidden"></p>
+        </div>
+        <div id="bulkResultsWrap" class="hidden">
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>파일</th><th>담당 직원</th><th>교육과정명</th><th>이수증번호</th><th>이수기관</th><th>이수일자</th><th>상태</th></tr></thead><tbody id="bulkResultsTable"></tbody></table></div>
+          <button class="btn btn-excel" onclick="saveBulkResults()">확인한 내용 모두 저장</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 교육과정 등록/수정 모달 -->
+<div id="courseModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2 id="courseModalTitle">새 의무교육 등록</h2>
+    <input type="hidden" id="courseId" />
+    <div class="form-group"><label>의무교육 명칭</label><input type="text" id="courseName" placeholder="예: 성희롱예방교육" /></div>
+    <div class="form-group">
+      <label>이수 인터넷 사이트 (여러 개 가능, 최대 3개, 줄바꿈으로 구분)</label>
+      <textarea id="courseSites" rows="2" placeholder="https://..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>교육과정명 (인정되는 과정명, 여러 개 가능, 줄바꿈으로 구분)</label>
+      <textarea id="courseCurriculumNames" rows="3" placeholder="예: 2026년 성희롱예방교육 기본과정"></textarea>
+    </div>
+    <div class="form-group"><label>교육시간</label><input type="text" id="courseHours" placeholder="예: 4시간" /></div>
+    <div class="form-group"><label>이수 기한</label><input type="date" id="courseDeadline" /></div>
+    <div class="form-group">
+      <label>이수 대상</label>
+      <select id="courseTarget">
+        <option value="all">전직원</option>
+        <option value="government">공무원만</option>
+      </select>
+    </div>
+    <div class="form-group"><label><input type="checkbox" id="courseCertRequired" checked style="width:auto;" /> 이수증 첨부 필요</label></div>
+    <div class="btn-row" style="margin-top:16px;">
+      <button type="button" class="btn btn-secondary" onclick="closeCourseModal()">취소</button>
+      <button type="button" class="btn" onclick="saveDemoCourse()">저장</button>
+    </div>
+    <button type="button" class="btn btn-danger btn-sm" id="courseDeleteBtn" style="margin-top:10px; width:100%;" onclick="deleteDemoCourse()">이 교육과정 삭제</button>
+  </div>
+</div>
+
+<!-- 이수증 업로드/OCR 확인 모달 -->
+<div id="certModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>이수증 제출 - <span id="certCourseNameLabel"></span></h2>
+    <div class="form-group">
+      <label>이수증 파일 (이미지 또는 PDF - 아무 파일이나 테스트해보세요)</label>
+      <input type="file" id="certFile" accept="image/*,.pdf" onchange="handleCertFileSelected()" />
+    </div>
+    <img id="certPreviewImg" class="cert-preview hidden" />
+    <p id="ocrProgress" class="ocr-progress hidden"></p>
+    <div id="certFormWrap" class="hidden">
+      <div class="status-banner ok" style="text-align:left;">자동 인식된 내용입니다. 저장 전 실제 이수증과 대조해 틀린 부분은 수정해주세요(이 확인 절차는 실제 서비스에서도 동일합니다).</div>
+      <div class="form-group"><label>교육과정명</label><input type="text" id="certCourseNameInput" list="certCourseNameOptions" /><datalist id="certCourseNameOptions"></datalist></div>
+      <div class="form-group"><label>이수증번호</label><input type="text" id="certNumber" /></div>
+      <div class="form-group"><label>이수기관</label><input type="text" id="certOrg" /></div>
+      <div class="form-group"><label>이수일자</label><input type="date" id="certDate" /></div>
+      <div class="btn-row" style="margin-top:16px;">
+        <button type="button" class="btn btn-secondary" onclick="closeCertModal()">취소</button>
+        <button type="button" class="btn" onclick="saveCertRecord()">확인하고 저장</button>
+      </div>
+    </div>
+    <button type="button" class="btn btn-secondary" style="margin-top:16px;" onclick="closeCertModal()">닫기</button>
+  </div>
+</div>
+
+<!-- 총괄관리자: 기록 보기/삭제 모달 -->
+<div id="recordsModal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:720px;">
+    <h2 id="recordsModalTitle">제출 기록</h2>
+    <p class="form-hint">삭제하면 되돌릴 수 없습니다(체험판에서도 사유 입력이 필수입니다).</p>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서</th><th>이름</th><th>고유번호</th><th>이수증번호</th><th>제출자</th><th></th></tr></thead><tbody id="recordsModalTable"></tbody></table></div>
+    <button type="button" class="btn btn-secondary" onclick="closeRecordsModal()">닫기</button>
+  </div>
+</div>
+
+<script>
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
+
+/* =====================================================================
+   체험판 가짜 데이터베이스 - 실제 Firebase 대신 이 객체 하나로 모든 화면이 동작합니다.
+   새로고침하면 초기 상태로 되돌아갑니다.
+===================================================================== */
+function seedDB() {
+  return {
+    org: { name: '테스트기관(예시)', type: 'government' },
+    departments: [
+      { id: 'd1', name: '총무과', password: 'TEST1234' },
+      { id: 'd2', name: '복지정책과', password: 'TEST5678' }
+    ],
+    roster: [
+      { deptId: 'd1', deptName: '총무과', team: '인사팀', name: '홍길동', employeeCode: '10001', employeeType: '공무원' },
+      { deptId: 'd1', deptName: '총무과', team: '서무팀', name: '김서무', employeeCode: '10002', employeeType: '공무원' },
+      { deptId: 'd1', deptName: '총무과', team: '', name: '이대리', employeeCode: '10003', employeeType: '기타' },
+      { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '박정책', employeeCode: '20001', employeeType: '공무원' },
+      { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '최주무관', employeeCode: '20002', employeeType: '공무원' }
+    ],
+    managers: [
+      { id: 'm1', name: '김담당', email: 'manager1@test.local' }
+    ],
+    courses: [
+      { id: 'c1', name: '성희롱예방교육', hours: '1시간', sites: ['https://example.kr/edu/c1'],
+        curriculumNames: ['2026년 성희롱예방교육 기본과정', '2026년 성희롱예방교육 관리자과정'],
+        deadline: '2026-12-15', target: 'all', certRequired: true, managerId: 'm1' },
+      { id: 'c2', name: '청렴교육', hours: '2시간', sites: ['https://example.kr/edu/c2'],
+        curriculumNames: ['2026년 공무원 청렴교육'],
+        deadline: '2026-11-30', target: 'government', certRequired: true, managerId: 'm1' }
+    ],
+    records: [],      // { id, courseId, courseName, deptId, deptName, team, employeeName, employeeCode, certNumber, certOrg, certDate, submittedByRole, submittedByName, submittedAt }
+    deletedRecords: []
+  };
+}
+let DB = seedDB();
+
+function resetDemo() {
+  if (!confirm('지금까지 체험판에서 등록/제출한 내용을 전부 지우고 처음 상태로 되돌릴까요?')) return;
+  DB = seedDB();
+  currentManagerId = DB.managers[0].id;
+  currentEmployee = null;
+  switchRole('super');
+}
+
+/* ------------------------- 역할 전환 ------------------------- */
+let currentRole = 'super';
+let currentManagerId = DB.managers[0].id;
+let currentEmployee = null; // { deptId, deptName, team, name, employeeCode, employeeType }
+
+function switchRole(role) {
+  currentRole = role;
+  ['Super','Manager','Employee'].forEach(r => {
+    document.getElementById('roleTab'+r).classList.toggle('active', r.toLowerCase() === role);
+    document.getElementById('view'+r).classList.toggle('hidden', r.toLowerCase() !== role);
+  });
+  if (role === 'super') renderSuperView();
+  if (role === 'manager') renderManagerView();
+  if (role === 'employee') renderEmployeeEntry();
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function randPassword(len) {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let s = ''; for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+function employeeMatchKey({ employeeCode, deptName, team, name }) {
+  return employeeCode ? 'c_' + employeeCode.trim() : 'n_' + (deptName||'') + '_' + (team||'') + '_' + (name||'');
+}
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = d instanceof Date ? d : new Date(d);
+  return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+}
+
+/* ============================== 총괄관리자 화면 ============================== */
+function renderSuperView() {
+  document.getElementById('superOrgName').textContent = DB.org.name + (DB.org.type === 'government' ? ' (공무원 소속 기관)' : ' (기타 기관)');
+
+  const deptCounts = {};
+  DB.roster.forEach(r => { deptCounts[r.deptId] = (deptCounts[r.deptId]||0)+1; });
+  const deptTbody = document.getElementById('superDeptTable');
+  deptTbody.innerHTML = DB.departments.map(d => `
+    <tr><td>${escHtml(d.name)}</td><td>${deptCounts[d.id]||0}명</td><td><code>${escHtml(d.password)}</code></td>
+    <td><button class="btn btn-sm btn-secondary" onclick="demoRegenDeptPw('${d.id}')">재발급</button></td></tr>`).join('')
+    || '<tr><td colspan="4" style="text-align:center; color:#94a3b8;">등록된 부서가 없습니다.</td></tr>';
+
+  const courseCounts = {};
+  DB.managers.forEach(m => { courseCounts[m.id] = DB.courses.filter(c => c.managerId === m.id).length; });
+  const mgrTbody = document.getElementById('superMgrTable');
+  mgrTbody.innerHTML = DB.managers.map(m => `
+    <tr><td>${escHtml(m.name)}</td><td>${escHtml(m.email)}</td><td>${courseCounts[m.id]||0}건</td></tr>`).join('')
+    || '<tr><td colspan="3" style="text-align:center; color:#94a3b8;">등록된 담당자가 없습니다.</td></tr>';
+
+  const targetLabel = { all: '전직원', government: '공무원만' };
+  const courseTbody = document.getElementById('superCourseTable');
+  courseTbody.innerHTML = DB.courses.map(c => {
+    const mgr = DB.managers.find(m => m.id === c.managerId);
+    const cnt = DB.records.filter(r => r.courseId === c.id).length;
+    return `<tr><td>${escHtml(c.name)}</td><td>${escHtml(mgr ? mgr.name : '-')}</td><td>${escHtml(c.hours||'')}</td><td>${escHtml(c.deadline)}</td>
+      <td>${targetLabel[c.target]||c.target}</td><td>${cnt}명</td>
+      <td><button class="btn btn-sm" onclick="openRecordsModal('${c.id}')">기록보기</button></td></tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">등록된 교육과정이 없습니다.</td></tr>';
+}
+
+function demoAddDept() {
+  const input = document.getElementById('superNewDeptName');
+  const name = input.value.trim();
+  if (!name) return alert('부서명을 입력해주세요.');
+  if (DB.departments.some(d => d.name === name)) return alert('이미 있는 부서명입니다.');
+  DB.departments.push({ id: 'd' + Date.now(), name, password: randPassword(8) });
+  input.value = '';
+  renderSuperView();
+  refreshEmployeeDeptSelects();
+}
+function demoRegenDeptPw(id) {
+  const d = DB.departments.find(x => x.id === id);
+  if (!d) return;
+  d.password = randPassword(8);
+  renderSuperView();
+}
+function demoAddManager() {
+  const nameInput = document.getElementById('superNewMgrName');
+  const emailInput = document.getElementById('superNewMgrEmail');
+  const name = nameInput.value.trim(), email = emailInput.value.trim();
+  if (!name || !email) return alert('성명과 이메일을 입력해주세요.');
+  DB.managers.push({ id: 'm' + Date.now(), name, email });
+  nameInput.value = ''; emailInput.value = '';
+  renderSuperView();
+  refreshManagerSelect();
+}
+
+let recordsModalCourseId = null;
+function openRecordsModal(courseId) {
+  recordsModalCourseId = courseId;
+  const course = DB.courses.find(c => c.id === courseId);
+  document.getElementById('recordsModalTitle').textContent = '제출 기록 - ' + (course ? course.name : '');
+  document.getElementById('recordsModal').classList.remove('hidden');
+  renderRecordsModal();
+}
+function closeRecordsModal() { document.getElementById('recordsModal').classList.add('hidden'); recordsModalCourseId = null; }
+function renderRecordsModal() {
+  const rows = DB.records.filter(r => r.courseId === recordsModalCourseId);
+  document.getElementById('recordsModalTable').innerHTML = rows.map(r => `
+    <tr><td>${escHtml(r.deptName)}${r.team ? ' / '+escHtml(r.team) : ''}</td><td>${escHtml(r.employeeName)}</td>
+    <td>${escHtml(r.employeeCode||'')}</td><td>${escHtml(r.certNumber||'')}</td>
+    <td>${escHtml(r.submittedByName||'')}${r.submittedByRole==='proxy' ? ' (대리제출)' : ''}</td>
+    <td><button class="btn btn-sm btn-danger" onclick="deleteDemoRecord('${r.id}')">삭제(정정)</button></td></tr>`).join('')
+    || '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">제출된 기록이 없습니다.</td></tr>';
+}
+function deleteDemoRecord(id) {
+  const reason = prompt('삭제(정정) 사유를 입력해주세요. (필수)');
+  if (!reason || !reason.trim()) return alert('사유를 입력해야 삭제할 수 있습니다.');
+  const idx = DB.records.findIndex(r => r.id === id);
+  if (idx < 0) return;
+  const [removed] = DB.records.splice(idx, 1);
+  DB.deletedRecords.push({ ...removed, reason: reason.trim(), deletedBy: '총괄관리자(체험)', deletedAt: new Date() });
+  renderRecordsModal();
+  renderSuperView();
+}
+
+/* ============================== 담당자 화면 ============================== */
+function refreshManagerSelect() {
+  const sel = document.getElementById('managerSelect');
+  sel.innerHTML = DB.managers.map(m => `<option value="${m.id}">${escHtml(m.name)} (${escHtml(m.email)})</option>`).join('');
+  if (!DB.managers.find(m => m.id === currentManagerId)) currentManagerId = DB.managers[0] ? DB.managers[0].id : null;
+  sel.value = currentManagerId;
+}
+function onManagerSelectChange() {
+  currentManagerId = document.getElementById('managerSelect').value;
+  renderManagerView();
+}
+function renderManagerView() {
+  refreshManagerSelect();
+  const myCourses = DB.courses.filter(c => c.managerId === currentManagerId);
+  const targetLabel = { all: '전직원', government: '공무원만' };
+  document.getElementById('managerCourseTable').innerHTML = myCourses.map(c => `
+    <tr><td>${escHtml(c.name)}</td><td>${escHtml(c.hours||'')}</td><td>${escHtml(c.deadline)}</td><td>${targetLabel[c.target]||c.target}</td>
+    <td>${c.certRequired ? '필요' : '불필요'}</td>
+    <td><button class="btn btn-sm" onclick="openCourseModal('${c.id}')">수정</button></td></tr>`).join('')
+    || '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">등록한 교육과정이 없습니다. 위 버튼으로 추가해보세요.</td></tr>';
+
+  const sel = document.getElementById('managerDownloadCourse');
+  sel.innerHTML = myCourses.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+}
+
+function openCourseModal(courseId) {
+  document.getElementById('courseModal').classList.remove('hidden');
+  document.getElementById('courseId').value = courseId || '';
+  document.getElementById('courseDeleteBtn').classList.toggle('hidden', !courseId);
+  if (courseId) {
+    const c = DB.courses.find(x => x.id === courseId);
+    document.getElementById('courseModalTitle').textContent = '교육과정 수정';
+    document.getElementById('courseName').value = c.name;
+    document.getElementById('courseSites').value = (c.sites||[]).join('\n');
+    document.getElementById('courseCurriculumNames').value = (c.curriculumNames||[]).join('\n');
+    document.getElementById('courseHours').value = c.hours||'';
+    document.getElementById('courseDeadline').value = c.deadline;
+    document.getElementById('courseTarget').value = c.target;
+    document.getElementById('courseCertRequired').checked = !!c.certRequired;
+  } else {
+    document.getElementById('courseModalTitle').textContent = '새 교육과정 등록';
+    document.getElementById('courseName').value = '';
+    document.getElementById('courseSites').value = '';
+    document.getElementById('courseCurriculumNames').value = '';
+    document.getElementById('courseHours').value = '';
+    document.getElementById('courseDeadline').value = '';
+    document.getElementById('courseTarget').value = 'all';
+    document.getElementById('courseCertRequired').checked = true;
+  }
+}
+function closeCourseModal() { document.getElementById('courseModal').classList.add('hidden'); }
+function saveDemoCourse() {
+  const id = document.getElementById('courseId').value;
+  const name = document.getElementById('courseName').value.trim();
+  if (!name) return alert('의무교육 명칭을 입력해주세요.');
+  const sites = document.getElementById('courseSites').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3);
+  const curriculumNames = document.getElementById('courseCurriculumNames').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 10);
+  const payload = {
+    name, sites, curriculumNames,
+    hours: document.getElementById('courseHours').value.trim(),
+    deadline: document.getElementById('courseDeadline').value || '2026-12-31',
+    target: document.getElementById('courseTarget').value,
+    certRequired: document.getElementById('courseCertRequired').checked,
+    managerId: currentManagerId
+  };
+  if (id) {
+    Object.assign(DB.courses.find(c => c.id === id), payload);
+  } else {
+    DB.courses.push({ id: 'c' + Date.now(), ...payload });
+  }
+  closeCourseModal();
+  renderManagerView();
+}
+function deleteDemoCourse() {
+  const id = document.getElementById('courseId').value;
+  if (!id) return;
+  if (!confirm('이 교육과정을 삭제할까요? 제출된 기록도 함께 삭제됩니다.')) return;
+  DB.courses = DB.courses.filter(c => c.id !== id);
+  DB.records = DB.records.filter(r => r.courseId !== id);
+  closeCourseModal();
+  renderManagerView();
+}
+
+function downloadDemoResults() {
+  const courseId = document.getElementById('managerDownloadCourse').value;
+  if (!courseId) return alert('교육과정을 선택해주세요.');
+  const course = DB.courses.find(c => c.id === courseId);
+  let roster = DB.roster.slice();
+  if (course.target === 'government') roster = roster.filter(e => e.employeeType === '공무원');
+
+  const recByKey = {};
+  DB.records.filter(r => r.courseId === courseId).forEach(r => { recByKey[employeeMatchKey({ employeeCode: r.employeeCode, deptName: r.deptName, team: r.team, name: r.employeeName })] = r; });
+
+  const rows = [['부서','팀','이름','고유번호','구분','제출여부','이수증번호','이수기관','이수일자','제출자','제출일시']];
+  roster.forEach(e => {
+    const rec = recByKey[employeeMatchKey(e)];
+    rows.push([e.deptName, e.team||'', e.name, e.employeeCode||'', e.employeeType||'', rec ? '제출' : '미제출',
+      rec ? rec.certNumber : '', rec ? rec.certOrg : '', rec ? rec.certDate : '',
+      rec ? (rec.submittedByRole === 'proxy' ? rec.submittedByName+'(대리)' : '본인') : '', rec ? fmtDate(rec.submittedAt) : '']);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '이수현황');
+  XLSX.writeFile(wb, `[체험판]${course.name}_이수현황.xlsx`);
+  document.getElementById('stepChip3').classList.add('done');
+}
+
+/* ============================== 부서원 화면 ============================== */
+function refreshEmployeeDeptSelects() {
+  const opts = DB.departments.map(d => `<option value="${d.id}">${escHtml(d.name)}</option>`).join('');
+  document.getElementById('empDeptSelect').innerHTML = opts;
+  document.getElementById('empNewDeptSelect').innerHTML = opts;
+  onEmpDeptChange();
+}
+function onEmpDeptChange() {
+  const deptId = document.getElementById('empDeptSelect').value;
+  const people = DB.roster.filter(r => r.deptId === deptId);
+  document.getElementById('empPersonSelect').innerHTML = people.map(p =>
+    `<option value="${escHtml(employeeMatchKey(p))}">${escHtml(p.name)}${p.team ? ' ('+escHtml(p.team)+')' : ''}</option>`).join('')
+    || '<option value="">(등록된 인원 없음 - 아래에서 새 직원으로 등록해보세요)</option>';
+}
+
+function renderEmployeeEntry() {
+  refreshEmployeeDeptSelects();
+  document.getElementById('employeePickWrap').classList.remove('hidden');
+  document.getElementById('employeeDashWrap').classList.add('hidden');
+  if (currentEmployee) { renderEmployeeDash(); }
+}
+
+function enterDemoEmployee() {
+  const deptId = document.getElementById('empDeptSelect').value;
+  const key = document.getElementById('empPersonSelect').value;
+  const dept = DB.departments.find(d => d.id === deptId);
+  const person = DB.roster.find(p => employeeMatchKey(p) === key);
+  if (!dept || !person) return alert('명단에 있는 직원을 선택하거나, 아래에서 새 직원으로 등록해주세요.');
+  currentEmployee = { ...person };
+  renderEmployeeDash();
+}
+
+function registerDemoEmployee() {
+  const deptId = document.getElementById('empNewDeptSelect').value;
+  const dept = DB.departments.find(d => d.id === deptId);
+  const name = document.getElementById('empNewName').value.trim();
+  const code = document.getElementById('empNewCode').value.trim();
+  if (!dept || !name) return alert('부서와 이름을 입력해주세요.');
+  const person = { deptId: dept.id, deptName: dept.name, team: '', name, employeeCode: code, employeeType: DB.org.type === 'government' ? '공무원' : '기타' };
+  DB.roster.push(person);
+  currentEmployee = { ...person };
+  document.getElementById('empNewName').value = ''; document.getElementById('empNewCode').value = '';
+  renderEmployeeDash();
+}
+
+function exitDemoEmployee() {
+  currentEmployee = null;
+  renderEmployeeEntry();
+}
+
+function renderEmployeeDash() {
+  document.getElementById('employeePickWrap').classList.add('hidden');
+  document.getElementById('employeeDashWrap').classList.remove('hidden');
+  document.getElementById('empLabel').textContent = `${currentEmployee.deptName}${currentEmployee.team ? ' / '+currentEmployee.team : ''} / ${currentEmployee.name}`;
+  document.getElementById('stepChip1').classList.add('done');
+  renderEmpCourseList();
+  refreshBulkCourseSelect();
+}
+
+function renderEmpCourseList() {
+  const ownKey = employeeMatchKey(currentEmployee);
+  const list = document.getElementById('empCourseList');
+  const applicable = DB.courses.filter(c => !(c.target === 'government' && currentEmployee.employeeType !== '공무원'));
+  list.innerHTML = applicable.map(c => {
+    const rec = DB.records.find(r => r.courseId === c.id && employeeMatchKey({ employeeCode: r.employeeCode, deptName: r.deptName, team: r.team, name: r.employeeName }) === ownKey);
+    return `<div class="card-box">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+        <div>
+          <strong>${escHtml(c.name)}</strong>
+          <div style="font-size:12px; color:#64748b; margin-top:4px;">교육시간: ${escHtml(c.hours||'-')} · 이수기한: ${escHtml(c.deadline)} · 대상: ${c.target==='government'?'공무원':'전직원'}</div>
+          ${(c.curriculumNames||[]).length ? `<div style="font-size:12px; color:#94a3b8; margin-top:4px;">인정 과정명: ${(c.curriculumNames||[]).map(escHtml).join(', ')}</div>` : ''}
+          ${rec ? `<div style="font-size:12px; color:#64748b; margin-top:6px;">제출됨 - ${escHtml(rec.courseName||'')} / ${escHtml(rec.certOrg||'')} / ${escHtml(rec.certDate||'')} ${rec.submittedByRole==='proxy' ? '(서무 대리제출: '+escHtml(rec.submittedByName)+')' : ''}</div>` : ''}
+        </div>
+        <div style="text-align:right;">
+          <span class="badge ${rec ? 'badge-ok' : 'badge-no'}">${rec ? '제출완료' : '미제출'}</span><br/>
+          ${rec ? '' : `<button class="btn btn-sm" style="margin-top:8px;" onclick="openCertModal('${c.id}')">이수증 제출</button>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:#94a3b8; text-align:center;">현재 해당하는 의무교육이 없습니다.</p>';
+}
+
+/* ---------- OCR 공용 함수 ---------- */
+async function ocrExtractFromFile(file, onProgress) {
+  let imageSource;
+  if (file.type === 'application/pdf') {
+    if (onProgress) onProgress('PDF에서 첫 페이지를 이미지로 변환하는 중...');
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width; canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    imageSource = canvas.toDataURL('image/png');
+  } else {
+    imageSource = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  if (onProgress) onProgress('이수증 내용을 인식하는 중입니다... (수 초~수십 초 소요될 수 있습니다)');
+  const result = await Tesseract.recognize(imageSource, 'kor+eng', {
+    logger: m => { if (onProgress && m.status === 'recognizing text') onProgress(`이수증 내용을 인식하는 중입니다... ${Math.round((m.progress||0)*100)}%`); }
+  });
+  const text = result.data.text || '';
+  return { imageSource, text, guess: guessCertFields(text) };
+}
+function guessCertFields(text) {
+  const norm = text.replace(/\r/g, '');
+  const lines = norm.split('\n').map(l => l.trim()).filter(Boolean);
+  function findAfterLabel(labels) {
+    for (const line of lines) for (const label of labels) {
+      const idx = line.indexOf(label);
+      if (idx >= 0) { const v = line.slice(idx+label.length).replace(/^[:\s∙·.]+/, '').trim(); if (v) return v; }
+    }
+    return '';
+  }
+  const certNumber = findAfterLabel(['이수번호','수료번호','이수증번호','발급번호','No.','No','NO.']);
+  const certOrg = findAfterLabel(['발급기관','교육기관','이수기관','운영기관','주관기관']);
+  let certDate = '';
+  const m = norm.match(/(20\d{2})[.\-\/년]\s?(\d{1,2})[.\-\/월]\s?(\d{1,2})/);
+  if (m) certDate = m[1] + '-' + m[2].padStart(2,'0') + '-' + m[3].padStart(2,'0');
+  let guessedName = '', guessedLen = 0;
+  DB.roster.filter(p => p.deptId === (currentEmployee ? currentEmployee.deptId : null)).forEach(p => {
+    if (p.name && p.name.length >= 2 && norm.indexOf(p.name) >= 0 && p.name.length > guessedLen) { guessedName = p.name; guessedLen = p.name.length; }
+  });
+  return { certNumber, certOrg, certDate, guessedName };
+}
+
+let certContext = null;
+function openCertModal(courseId) {
+  const course = DB.courses.find(c => c.id === courseId) || {};
+  const courseName = course.name || '';
+  certContext = { courseId, courseName };
+  document.getElementById('certCourseNameLabel').textContent = courseName;
+  document.getElementById('certModal').classList.remove('hidden');
+  document.getElementById('certFile').value = '';
+  document.getElementById('certPreviewImg').classList.add('hidden');
+  document.getElementById('certFormWrap').classList.add('hidden');
+  document.getElementById('ocrProgress').classList.add('hidden');
+  const curriculumNames = course.curriculumNames || [];
+  document.getElementById('certCourseNameOptions').innerHTML = curriculumNames.map(n => `<option value="${escHtml(n)}"></option>`).join('');
+  document.getElementById('certCourseNameInput').value = curriculumNames[0] || courseName;
+  document.getElementById('certNumber').value = '';
+  document.getElementById('certOrg').value = '';
+  document.getElementById('certDate').value = '';
+}
+function closeCertModal() { document.getElementById('certModal').classList.add('hidden'); certContext = null; }
+
+async function handleCertFileSelected() {
+  const file = document.getElementById('certFile').files[0];
+  if (!file) return;
+  const progressEl = document.getElementById('ocrProgress');
+  const previewImg = document.getElementById('certPreviewImg');
+  progressEl.classList.remove('hidden');
+  progressEl.textContent = '파일을 불러오는 중...';
+  try {
+    const { imageSource, text, guess } = await ocrExtractFromFile(file, msg => { progressEl.textContent = msg; });
+    previewImg.src = imageSource; previewImg.classList.remove('hidden');
+    const course = certContext ? (DB.courses.find(c => c.id === certContext.courseId) || {}) : {};
+    const matchedCurriculum = (course.curriculumNames || []).find(n => n && text && text.indexOf(n) >= 0);
+    if (matchedCurriculum) document.getElementById('certCourseNameInput').value = matchedCurriculum;
+    document.getElementById('certNumber').value = guess.certNumber;
+    document.getElementById('certOrg').value = guess.certOrg;
+    document.getElementById('certDate').value = guess.certDate;
+    progressEl.classList.add('hidden');
+    document.getElementById('certFormWrap').classList.remove('hidden');
+  } catch (e) {
+    console.error(e);
+    progressEl.textContent = '자동 인식에 실패했습니다. 아래에서 직접 입력해주세요.';
+    document.getElementById('certFormWrap').classList.remove('hidden');
+  }
+}
+
+function saveCertRecord() {
+  if (!certContext || !currentEmployee) return;
+  const key = employeeMatchKey(currentEmployee);
+  const dup = DB.records.find(r => r.courseId === certContext.courseId &&
+    employeeMatchKey({ employeeCode: r.employeeCode, deptName: r.deptName, team: r.team, name: r.employeeName }) === key);
+  if (dup) { alert('이미 제출된 기록입니다. 실제 서비스에서도 본인이 직접 수정할 수 없고, 총괄관리자에게 정정을 요청해야 합니다.'); closeCertModal(); renderEmpCourseList(); return; }
+
+  DB.records.push({
+    id: 'r' + Date.now() + Math.random().toString(36).slice(2,6),
+    courseId: certContext.courseId, courseName: document.getElementById('certCourseNameInput').value.trim(),
+    deptId: currentEmployee.deptId, deptName: currentEmployee.deptName, team: currentEmployee.team||'',
+    employeeName: currentEmployee.name, employeeCode: currentEmployee.employeeCode||'',
+    certNumber: document.getElementById('certNumber').value.trim(), certOrg: document.getElementById('certOrg').value.trim(),
+    certDate: document.getElementById('certDate').value,
+    submittedByRole: 'self', submittedByName: currentEmployee.name, submittedAt: new Date()
+  });
+  document.getElementById('stepChip2').classList.add('done');
+  closeCertModal();
+  renderEmpCourseList();
+}
+
+/* ---------- 부서 일괄 업로드 ---------- */
+let bulkEntries = [];
+function refreshBulkCourseSelect() {
+  const sel = document.getElementById('bulkCourseSelect');
+  sel.innerHTML = DB.courses.map(c => `<option value="${c.id}">${escHtml(c.name)} (${c.target==='government'?'공무원만':'전직원'}, ${escHtml(c.deadline)}까지)</option>`).join('');
+  resetBulkUpload();
+}
+function resetBulkUpload() {
+  bulkEntries = [];
+  document.getElementById('bulkFiles').value = '';
+  document.getElementById('bulkResultsWrap').classList.add('hidden');
+  document.getElementById('bulkResultsTable').innerHTML = '';
+  document.getElementById('bulkProgress').classList.add('hidden');
+}
+function rosterOptionsHtml(selectedKey) {
+  const people = DB.roster.filter(p => p.deptId === currentEmployee.deptId);
+  let html = '<option value="">- 직접입력 -</option>';
+  people.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko')).forEach(p => {
+    const key = employeeMatchKey(p);
+    html += `<option value="${escHtml(key)}" ${key===selectedKey?'selected':''}>${escHtml(p.name)}${p.team?' ('+escHtml(p.team)+')':''}</option>`;
+  });
+  return html;
+}
+async function startBulkUpload() {
+  const files = Array.from(document.getElementById('bulkFiles').files || []);
+  if (!files.length) return alert('이수증 파일을 선택해주세요.');
+  const courseId = document.getElementById('bulkCourseSelect').value;
+  if (!courseId) return alert('교육과정을 선택해주세요.');
+  const progressEl = document.getElementById('bulkProgress');
+  progressEl.classList.remove('hidden');
+  const course = DB.courses.find(c => c.id === courseId) || {};
+  const curriculumNames = course.curriculumNames || [];
+  bulkEntries = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    progressEl.textContent = `(${i+1}/${files.length}) ${file.name} 인식 중...`;
+    try {
+      const { text, guess } = await ocrExtractFromFile(file, msg => { progressEl.textContent = `(${i+1}/${files.length}) ${file.name} - ${msg}`; });
+      const roster = DB.roster.find(p => p.deptId === currentEmployee.deptId && p.name === guess.guessedName);
+      const matchedCurriculum = curriculumNames.find(n => n && text && text.indexOf(n) >= 0);
+      bulkEntries.push({ fileName: file.name, courseId, matchedKey: roster ? employeeMatchKey(roster) : '', manualName: roster ? '' : (guess.guessedName||''),
+        courseName: matchedCurriculum || curriculumNames[0] || course.name || '',
+        certNumber: guess.certNumber, certOrg: guess.certOrg, certDate: guess.certDate, status: '확인 대기' });
+    } catch (e) {
+      bulkEntries.push({ fileName: file.name, courseId, matchedKey: '', manualName: '',
+        courseName: curriculumNames[0] || course.name || '',
+        certNumber: '', certOrg: '', certDate: '', status: '인식 실패 - 직접 입력 필요' });
+    }
+  }
+  progressEl.classList.add('hidden');
+  renderBulkResults();
+}
+function bulkCurriculumOptionsHtml() {
+  const courseId = document.getElementById('bulkCourseSelect').value;
+  const course = DB.courses.find(c => c.id === courseId) || {};
+  return (course.curriculumNames || []).map(n => `<option value="${escHtml(n)}"></option>`).join('');
+}
+function renderBulkResults() {
+  document.getElementById('bulkResultsWrap').classList.remove('hidden');
+  const curriculumOptionsHtml = bulkCurriculumOptionsHtml();
+  document.getElementById('bulkResultsTable').innerHTML = bulkEntries.map((e,i) => `
+    <tr>
+      <td>${escHtml(e.fileName)}</td>
+      <td><select onchange="onBulkNameChange(${i}, this)">${rosterOptionsHtml(e.matchedKey)}</select>
+        ${e.matchedKey ? '' : `<input type="text" placeholder="이름 직접입력" value="${escHtml(e.manualName)}" style="margin-top:4px; width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].manualName=this.value" />`}</td>
+      <td><input type="text" list="bulkCurriculumOptions${i}" value="${escHtml(e.courseName)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].courseName=this.value" /><datalist id="bulkCurriculumOptions${i}">${curriculumOptionsHtml}</datalist></td>
+      <td><input type="text" value="${escHtml(e.certNumber)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certNumber=this.value" /></td>
+      <td><input type="text" value="${escHtml(e.certOrg)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certOrg=this.value" /></td>
+      <td><input type="date" value="${escHtml(e.certDate)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certDate=this.value" /></td>
+      <td>${escHtml(e.status)}</td>
+    </tr>`).join('');
+}
+function onBulkNameChange(i, sel) { bulkEntries[i].matchedKey = sel.value; bulkEntries[i].manualName = ''; renderBulkResults(); }
+
+function saveBulkResults() {
+  let ok=0, dup=0, fail=0;
+  bulkEntries.forEach(e => {
+    let entryInfo;
+    if (e.matchedKey) {
+      const roster = DB.roster.find(p => p.deptId === currentEmployee.deptId && employeeMatchKey(p) === e.matchedKey);
+      if (!roster) { e.status = '직원 확인 실패'; fail++; return; }
+      entryInfo = { employeeCode: roster.employeeCode, deptName: roster.deptName, team: roster.team, name: roster.name };
+    } else if (e.manualName && e.manualName.trim()) {
+      entryInfo = { employeeCode: '', deptName: currentEmployee.deptName, team: '', name: e.manualName.trim() };
+    } else { e.status = '담당 직원 미선택'; fail++; return; }
+
+    const key = employeeMatchKey(entryInfo);
+    const dupRec = DB.records.find(r => r.courseId === e.courseId && employeeMatchKey({ employeeCode: r.employeeCode, deptName: r.deptName, team: r.team, name: r.employeeName }) === key);
+    if (dupRec) { e.status = '이미 제출됨(건너뜀)'; dup++; return; }
+
+    const course = DB.courses.find(c => c.id === e.courseId);
+    DB.records.push({
+      id: 'r' + Date.now() + Math.random().toString(36).slice(2,6),
+      courseId: e.courseId, courseName: (e.courseName||'').trim() || (course ? course.name : ''),
+      deptId: currentEmployee.deptId, deptName: entryInfo.deptName, team: entryInfo.team||'',
+      employeeName: entryInfo.name, employeeCode: entryInfo.employeeCode||'',
+      certNumber: (e.certNumber||'').trim(), certOrg: (e.certOrg||'').trim(), certDate: e.certDate||'',
+      submittedByRole: 'proxy', submittedByName: currentEmployee.name, submittedAt: new Date()
+    });
+    e.status = '저장 완료'; ok++;
+  });
+  renderBulkResults();
+  alert(`저장 완료 ${ok}건, 이미 제출되어 건너뜀 ${dup}건, 실패 ${fail}건`);
+  document.getElementById('stepChip2').classList.add('done');
+  renderEmpCourseList();
+}
+
+/* 초기 렌더 */
+renderSuperView();
+</script>
+</body>
+</html>
