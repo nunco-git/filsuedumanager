@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>의무교육 이수관리 시스템 - 체험판</title>
+<title>스마트 의무교육 관리시스템 - 체험판</title>
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
 <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
 
@@ -98,12 +98,12 @@
 
     <div class="demo-banner">
       🧪 <strong>이것은 체험용 테스트 페이지입니다.</strong> 실제 데이터베이스(Firebase)에 연결되어 있지 않으며, 지금 만든 부서·직원·이수기록은 전부 <strong>이 브라우저 창 안에서만</strong> 임시로 보관됩니다.
-      새로고침하거나 창을 닫으면 사라집니다. 이수증 자동인식(OCR)과 엑셀 다운로드는 실제 기능 그대로 동작하니 자유롭게 테스트해보세요.
+      새로고침하거나 창을 닫으면 사라집니다. 이수결과 선택 입력과 엑셀 다운로드는 실제 기능 그대로 동작하니 자유롭게 테스트해보세요.
       <button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="resetDemo()">전체 초기화</button>
     </div>
 
     <div class="header">
-      <h1>📚 의무교육 이수관리 시스템 - 체험판</h1>
+      <h1>📚 스마트 의무교육 관리시스템 - 체험판</h1>
       <p>아래에서 역할을 선택하면, 그 역할이 실제로 무엇을 할 수 있는지 바로 체험해볼 수 있습니다.</p>
     </div>
 
@@ -157,6 +157,28 @@
 
       <div class="section-heading">교육과정 등록·관리 <button class="btn btn-sm" style="width:auto;" onclick="openCourseModal()">+ 새 교육과정</button></div>
       <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>이수 사이트</th><th>교육과정명</th><th>이수기관</th><th>이수증번호</th><th>교육시간</th><th>이수기한</th><th>대상</th><th></th></tr></thead><tbody id="managerCourseTable"></tbody></table></div>
+
+      <div class="section-heading">부서별 이수현황 (실시간)</div>
+      <p class="section-sub">과정을 선택하면 부서별 대상 인원·제출 인원이 바로 갱신됩니다. 엑셀 다운로드 전에 먼저 여기서 확인해보세요.</p>
+      <div class="card-box">
+        <div class="form-group">
+          <label>교육과정 선택</label>
+          <select id="mgrStatusCourse" onchange="renderMgrStatus()"></select>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>부서</th><th>대상 인원</th><th>제출 인원</th><th>미제출 인원</th><th>제출율</th></tr></thead>
+            <tbody id="mgrStatusTable"></tbody>
+            <tfoot><tr style="font-weight:bold; background:#f8fafc;">
+              <td>전체</td>
+              <td id="mgrStatusTotalTarget">-</td>
+              <td id="mgrStatusTotalDone">-</td>
+              <td id="mgrStatusTotalLeft">-</td>
+              <td id="mgrStatusTotalRate">-</td>
+            </tr></tfoot>
+          </table>
+        </div>
+      </div>
 
       <div class="section-heading">이수현황 다운로드 <span style="font-weight:normal; font-size:12px; color:#94a3b8;">- 실제 엑셀 파일이 다운로드됩니다</span></div>
       <div class="card-box">
@@ -305,33 +327,80 @@
    새로고침하면 초기 상태로 되돌아갑니다.
 ===================================================================== */
 function seedDB() {
+  const roster = [
+    { deptId: 'd1', deptName: '총무과', team: '인사팀', name: '홍길동', employeeCode: '10001', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '총무팀', name: '김서무', employeeCode: '10002', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '기획팀', name: '이대리', employeeCode: '10003', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '회계팀', name: '박주사', employeeCode: '10004', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '인사팀', name: '최주무관', employeeCode: '10005', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '총무팀', name: '정민수', employeeCode: '10006', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '기획팀', name: '강영희', employeeCode: '10007', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '회계팀', name: '윤서연', employeeCode: '10008', employeeType: '공무원' },
+    { deptId: 'd1', deptName: '총무과', team: '시설관리팀', name: '한도윤', employeeCode: '10009', employeeType: '기타' },
+    { deptId: 'd1', deptName: '총무과', team: '시설관리팀', name: '오지훈', employeeCode: '10010', employeeType: '기타' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '박정책', employeeCode: '20001', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '조은비', employeeCode: '20002', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '임하늘', employeeCode: '20003', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지운영팀', name: '신동엽', employeeCode: '20004', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지운영팀', name: '배수지', employeeCode: '20005', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지운영팀', name: '문지원', employeeCode: '20006', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지운영팀', name: '장현우', employeeCode: '20007', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '서민정', employeeCode: '20008', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '권도현', employeeCode: '20009', employeeType: '공무원' },
+    { deptId: 'd2', deptName: '복지정책과', team: '복지시설팀', name: '유하은', employeeCode: '20010', employeeType: '기타' }
+  ];
+
+  const courses = [
+    { id: 'c1', name: '성희롱예방교육', hours: '1시간', sites: ['https://example.kr/edu/c1'],
+      curriculumNames: ['2026년 성희롱예방교육 기본과정', '2026년 성희롱예방교육 관리자과정'],
+      certOrgs: ['지방자치인재개발원', '한국양성평등교육진흥원'],
+      deadline: '2026-12-15', target: 'all', certRequired: false, managerId: 'm1' },
+    { id: 'c2', name: '청렴교육', hours: '2시간', sites: ['https://example.kr/edu/c2'],
+      curriculumNames: ['2026년 공무원 청렴교육'],
+      certOrgs: ['지방자치인재개발원'],
+      deadline: '2026-11-30', target: 'government', certRequired: true, managerId: 'm2' }
+  ];
+
+  // c1(전직원 대상)은 20명 중 12명 제출(60%), c2(공무원 17명 대상)는 10명 제출(약 59%)로
+  // 체험판 진입 시 바로 실제와 비슷한 이수현황을 볼 수 있도록 구성.
+  const c1DoneCodes = ['10001','10002','10003','10004','10005','10006','20001','20002','20003','20004','20005','20006'];
+  const c2DoneCodes = ['10001','10002','10003','10004','10005','20001','20002','20003','20004','20005'];
+  const records = [];
+  let rid = 1;
+  roster.forEach(e => {
+    if (c1DoneCodes.includes(e.employeeCode)) {
+      records.push({
+        id: 'r' + (rid++), courseId: 'c1', courseName: courses[0].curriculumNames[0], site: courses[0].sites[0],
+        deptId: e.deptId, deptName: e.deptName, team: e.team || '',
+        employeeName: e.name, employeeCode: e.employeeCode,
+        certOrg: courses[0].certOrgs[0], certNumber: '', certDate: '2026-03-10',
+        submittedByRole: 'self', submittedByName: e.name, submittedAt: new Date('2026-03-10')
+      });
+    }
+    if (c2DoneCodes.includes(e.employeeCode)) {
+      records.push({
+        id: 'r' + (rid++), courseId: 'c2', courseName: courses[1].curriculumNames[0], site: courses[1].sites[0],
+        deptId: e.deptId, deptName: e.deptName, team: e.team || '',
+        employeeName: e.name, employeeCode: e.employeeCode,
+        certOrg: courses[1].certOrgs[0], certNumber: 'CERT-' + e.employeeCode, certDate: '2026-04-05',
+        submittedByRole: 'self', submittedByName: e.name, submittedAt: new Date('2026-04-05')
+      });
+    }
+  });
+
   return {
     org: { name: '테스트기관(예시)', type: 'government' },
     departments: [
       { id: 'd1', name: '총무과', password: genDeptPassword('총무과') },
       { id: 'd2', name: '복지정책과', password: genDeptPassword('복지정책과') }
     ],
-    roster: [
-      { deptId: 'd1', deptName: '총무과', team: '인사팀', name: '홍길동', employeeCode: '10001', employeeType: '공무원' },
-      { deptId: 'd1', deptName: '총무과', team: '서무팀', name: '김서무', employeeCode: '10002', employeeType: '공무원' },
-      { deptId: 'd1', deptName: '총무과', team: '', name: '이대리', employeeCode: '10003', employeeType: '기타' },
-      { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '박정책', employeeCode: '20001', employeeType: '공무원' },
-      { deptId: 'd2', deptName: '복지정책과', team: '복지기획팀', name: '최주무관', employeeCode: '20002', employeeType: '공무원' }
-    ],
+    roster,
     managers: [
-      { id: 'm1', name: '김담당', email: 'manager1@test.local' }
+      { id: 'm1', name: '김담당', email: 'manager1@test.local' },
+      { id: 'm2', name: '이담당', email: 'manager2@test.local' }
     ],
-    courses: [
-      { id: 'c1', name: '성희롱예방교육', hours: '1시간', sites: ['https://example.kr/edu/c1'],
-        curriculumNames: ['2026년 성희롱예방교육 기본과정', '2026년 성희롱예방교육 관리자과정'],
-        certOrgs: ['지방자치인재개발원', '한국양성평등교육진흥원'],
-        deadline: '2026-12-15', target: 'all', certRequired: false, managerId: 'm1' },
-      { id: 'c2', name: '청렴교육', hours: '2시간', sites: ['https://example.kr/edu/c2'],
-        curriculumNames: ['2026년 공무원 청렴교육'],
-        certOrgs: ['지방자치인재개발원'],
-        deadline: '2026-11-30', target: 'government', certRequired: true, managerId: 'm1' }
-    ],
-    records: [],      // { id, courseId, courseName, site, deptId, deptName, team, employeeName, employeeCode, certOrg, certNumber, certDate, submittedByRole, submittedByName, submittedAt }
+    courses,
+    records,      // { id, courseId, courseName, site, deptId, deptName, team, employeeName, employeeCode, certOrg, certNumber, certDate, submittedByRole, submittedByName, submittedAt }
     deletedRecords: []
   };
 }
@@ -528,6 +597,52 @@ function renderManagerView() {
 
   const sel = document.getElementById('managerDownloadCourse');
   sel.innerHTML = myCourses.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+
+  const statusSel = document.getElementById('mgrStatusCourse');
+  const prevStatus = statusSel.value;
+  statusSel.innerHTML = '<option value="">- 선택 -</option>' + myCourses.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+  statusSel.value = myCourses.some(c => c.id === prevStatus) ? prevStatus : '';
+  renderMgrStatus();
+}
+
+function renderMgrStatus() {
+  const courseId = document.getElementById('mgrStatusCourse').value;
+  const tbody = document.getElementById('mgrStatusTable');
+  const totalTarget = document.getElementById('mgrStatusTotalTarget');
+  const totalDone = document.getElementById('mgrStatusTotalDone');
+  const totalLeft = document.getElementById('mgrStatusTotalLeft');
+  const totalRate = document.getElementById('mgrStatusTotalRate');
+  if (!courseId) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">교육과정을 선택해주세요.</td></tr>';
+    totalTarget.textContent = totalDone.textContent = totalLeft.textContent = totalRate.textContent = '-';
+    return;
+  }
+  const course = DB.courses.find(c => c.id === courseId);
+  let roster = DB.roster.slice();
+  if (course.target === 'government') roster = roster.filter(e => e.employeeType === '공무원');
+
+  const targetByDept = {};
+  roster.forEach(e => { const dn = e.deptName || '기타'; targetByDept[dn] = (targetByDept[dn]||0) + 1; });
+
+  const doneByDept = {};
+  DB.records.filter(r => r.courseId === courseId).forEach(r => { const dn = r.deptName || '기타'; doneByDept[dn] = (doneByDept[dn]||0) + 1; });
+
+  const depts = Array.from(new Set([...Object.keys(targetByDept), ...Object.keys(doneByDept)])).sort();
+  tbody.innerHTML = '';
+  let sumTarget = 0, sumDone = 0;
+  depts.forEach(dn => {
+    const target = targetByDept[dn] || 0;
+    const done = Math.min(doneByDept[dn] || 0, target || (doneByDept[dn]||0));
+    const left = Math.max(target - done, 0);
+    const rate = target ? Math.round((done / target) * 1000) / 10 : 0;
+    sumTarget += target; sumDone += done;
+    tbody.innerHTML += `<tr><td>${escHtml(dn)}</td><td>${target}</td><td>${done}</td><td>${left}</td><td>${rate}%</td></tr>`;
+  });
+  if (!depts.length) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">대상 인원이 없습니다.</td></tr>';
+  totalTarget.textContent = sumTarget;
+  totalDone.textContent = sumDone;
+  totalLeft.textContent = Math.max(sumTarget - sumDone, 0);
+  totalRate.textContent = (sumTarget ? Math.round((sumDone / sumTarget) * 1000) / 10 : 0) + '%';
 }
 
 function openCourseModal(courseId) {
