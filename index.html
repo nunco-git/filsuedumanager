@@ -1214,7 +1214,7 @@ async function startBulkUpload() {
       const matchedCurriculum = (courseInfo.curriculumNames || []).find(n => n && text.indexOf(n) >= 0);
       bulkEntries.push({
         fileName: file.name, courseId,
-        courseName: matchedCurriculum || (courseInfo.curriculumNames||[])[0] || courseInfo.name || '',
+        courseName: matchedCurriculum || guess.courseNameGuess || (courseInfo.curriculumNames||[])[0] || courseInfo.name || '',
         matchedKey: key, manualName: key ? '' : (guess.guessedName || ''),
         certNumber: guess.certNumber, certOrg: guess.certOrg, certDate: guess.certDate,
         status: '확인 대기'
@@ -1361,38 +1361,97 @@ function guessCertFields(text) {
   const norm = text.replace(/\r/g, '');
   const lines = norm.split('\n').map(l => l.trim()).filter(Boolean);
 
+  function restOfLineAfterLabel(line, label) {
+    const idx = line.indexOf(label);
+    if (idx < 0) return '';
+    return line.slice(idx + label.length).replace(/^[:\s∙·.=]+/, '').trim();
+  }
   function findAfterLabel(labels) {
     for (const line of lines) {
       for (const label of labels) {
-        const idx = line.indexOf(label);
-        if (idx >= 0) {
-          let v = line.slice(idx + label.length).replace(/^[:\s∙·.]+/, '').trim();
-          if (v) return v;
-        }
+        const v = restOfLineAfterLabel(line, label);
+        if (v) return v;
       }
     }
     return '';
   }
-
-  const certNumber = findAfterLabel(['이수번호','수료번호','이수증번호','발급번호','No.','No','NO.']);
-  const certOrg = findAfterLabel(['발급기관','교육기관','이수기관','운영기관','주관기관']);
-
-  let certDate = '';
-  const dateMatch = norm.match(/(20\d{2})[.\-\/년]\s?(\d{1,2})[.\-\/월]\s?(\d{1,2})/);
-  if (dateMatch) {
-    certDate = dateMatch[1] + '-' + dateMatch[2].padStart(2,'0') + '-' + dateMatch[3].padStart(2,'0');
+  function findLineIndex(labels) {
+    for (let i = 0; i < lines.length; i++) {
+      for (const label of labels) {
+        if (lines[i].indexOf(label) >= 0) return { idx: i, label };
+      }
+    }
+    return null;
   }
+
+  // 1) 이수증 번호: 실물 이수증 맨 상단에 "제 00000호" 형식으로 적혀있는 경우가 많다.
+  let certNumber = '';
+  const numberPattern = /제\s*([0-9A-Za-z가-힣\-]{1,20}?)\s*호/;
+  for (const line of lines.slice(0, 8)) {
+    const m = line.match(numberPattern);
+    if (m) { certNumber = '제 ' + m[1] + '호'; break; }
+  }
+  if (!certNumber) {
+    for (const line of lines) {
+      const m = line.match(numberPattern);
+      if (m) { certNumber = '제 ' + m[1] + '호'; break; }
+    }
+  }
+  if (!certNumber) certNumber = findAfterLabel(['이수번호','수료번호','이수증번호','발급번호','No.','No','NO.']);
+
+  // 2) 이름: "성명" 또는 "이름" 뒤에 오는 단어
+  const nameHit = findLineIndex(['성명','이름']);
+  let certPersonName = '';
+  if (nameHit) {
+    const rest = restOfLineAfterLabel(lines[nameHit.idx], nameHit.label);
+    const m = rest.match(/[가-힣]{2,5}/);
+    certPersonName = m ? m[0] : (rest.split(/\s+/)[0] || '');
+  }
+
+  // 3) 이수과정명: "과정명/과정/강좌명/강좌" 뒤에 오는 문장
+  const courseNameGuess = findAfterLabel(['과정명', '강좌명', '과정', '강좌']);
+
+  // 4) 교육시간: "상시학습인정시간" 또는 "학습시간" 뒤에 오는 단어 (교육과정 자체의 고정 시간과 대조용)
+  const hoursHit = findLineIndex(['상시학습인정시간', '학습시간']);
+  let hoursGuess = '';
+  if (hoursHit) {
+    const rest = restOfLineAfterLabel(lines[hoursHit.idx], hoursHit.label);
+    const m = rest.match(/[0-9]+(?:\.[0-9]+)?\s*시간/) || rest.match(/[0-9]+(?:\.[0-9]+)?/);
+    hoursGuess = m ? m[0].replace(/\s+/g, '') : (rest.split(/\s+/)[0] || '');
+  }
+
+  // 5) 이수일자: 연도(20xx)가 들어있는 줄에서 날짜를 추출
+  let certDate = '';
+  for (const line of lines) {
+    if (!/20\d{2}/.test(line)) continue;
+    let m = line.match(/(20\d{2})[.\-\/년]\s?(\d{1,2})[.\-\/월]\s?(\d{1,2})/);
+    if (m) { certDate = m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0'); break; }
+    m = line.match(/(20\d{2})(\d{2})(\d{2})/);
+    if (m) { certDate = m[1] + '-' + m[2] + '-' + m[3]; break; }
+  }
+
+  // 6) 이수기관: 이름이 적힌 줄 바로 다음 줄
+  let certOrg = '';
+  if (nameHit && lines[nameHit.idx + 1]) certOrg = lines[nameHit.idx + 1].trim();
+  if (!certOrg) certOrg = findAfterLabel(['발급기관', '교육기관', '이수기관', '운영기관', '주관기관']);
 
   // 이수증 안에 부서 명단의 이름이 그대로 적혀 있는 경우, 일괄 업로드에서 담당 직원을 미리 추정하는 데 쓴다.
   let guessedName = '';
-  let guessedLen = 0;
-  (state.deptRoster || []).forEach(p => {
-    if (p.name && p.name.length >= 2 && norm.indexOf(p.name) >= 0 && p.name.length > guessedLen) {
-      guessedName = p.name; guessedLen = p.name.length;
-    }
-  });
+  if (certPersonName) {
+    const exact = (state.deptRoster || []).find(p => p.name === certPersonName);
+    if (exact) guessedName = exact.name;
+  }
+  if (!guessedName) {
+    let guessedLen = 0;
+    (state.deptRoster || []).forEach(p => {
+      if (p.name && p.name.length >= 2 && norm.indexOf(p.name) >= 0 && p.name.length > guessedLen) {
+        guessedName = p.name; guessedLen = p.name.length;
+      }
+    });
+  }
+  if (!guessedName) guessedName = certPersonName;
 
-  return { certNumber, certOrg, certDate, guessedName };
+  return { certNumber, certOrg, certDate, guessedName, courseNameGuess, hoursGuess, personName: certPersonName };
 }
 
 async function handleCertFileSelected() {
@@ -1410,10 +1469,12 @@ async function handleCertFileSelected() {
     document.getElementById('certNumber').value = guess.certNumber;
     document.getElementById('certOrg').value = guess.certOrg;
     document.getElementById('certDate').value = guess.certDate;
-    // 이 교육과정에 등록된 "인정 교육과정명" 중 이수증 텍스트에 그대로 적힌 것이 있으면 그걸로 맞춰준다.
+    // 이 교육과정에 등록된 "인정 교육과정명" 중 이수증 텍스트에 그대로 적힌 것이 있으면 그걸로 맞춰주고,
+    // 없으면 이수증에서 "과정/강좌명" 뒤에 적힌 문장으로라도 채워준다.
     const course = (state.employeeCourseCache || {})[state.certContext.courseId] || {};
     const matched = (course.curriculumNames || []).find(n => n && text.indexOf(n) >= 0);
     if (matched) document.getElementById('certCourseNameInput').value = matched;
+    else if (guess.courseNameGuess) document.getElementById('certCourseNameInput').value = guess.courseNameGuess;
     progressEl.classList.add('hidden');
     document.getElementById('certFormWrap').classList.remove('hidden');
   } catch (e) {
