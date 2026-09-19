@@ -119,7 +119,7 @@
   <div id="viewLogin">
     <div class="header">
       <h1>📚 의무교육 이수관리 시스템</h1>
-      <p>총괄관리자는 Google 계정으로, 담당자·직원은 안내받은 정보로 접속합니다.</p>
+      <p>총괄관리자는 기관/네이버 이메일 인증으로, 담당자·직원은 구글 로그인과 안내받은 정보로 접속합니다.</p>
     </div>
 
     <div class="tabs">
@@ -128,13 +128,20 @@
       <button class="tab-btn" id="tabEmployeeBtn" onclick="switchLoginTab('employee')">직원 (이수정보 입력)</button>
     </div>
 
-    <!-- 총괄관리자 로그인 -->
+    <!-- 총괄관리자 로그인 (이메일 인증) -->
     <div id="panelSuper" class="card">
-      <p style="font-size:14px; color:#64748b; text-align:center; margin-bottom:16px;">기관을 처음 등록하거나 이미 등록한 총괄관리자는 Google 계정으로 로그인하세요.</p>
-      <button type="button" class="btn btn-google" onclick="handleGoogleLogin()">
-        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.6 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 6 29.6 4 24 4 16 4 9.1 8.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.3-1.9 14-5.1l-6.5-5.5C29.5 35.3 26.9 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9 39.4 15.9 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.6l6.5 5.5C40.9 36 44 30.6 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
-        Google 계정으로 로그인
-      </button>
+      <p style="font-size:14px; color:#64748b; text-align:center; margin-bottom:16px;">총괄관리자는 <strong>소속 기관 이메일</strong>(korea.kr, go.kr, or.kr, ac.kr, re.kr) 또는 <strong>네이버 이메일</strong>로만 인증할 수 있습니다.</p>
+      <div id="superEmailStep">
+        <div class="form-group">
+          <label>이메일 주소</label>
+          <input type="email" id="superEmail" placeholder="예: hong@buyeo.go.kr 또는 hong@naver.com" required />
+        </div>
+        <button type="button" class="btn" onclick="sendSuperAdminVerification()">인증 메일 발송</button>
+        <p id="superEmailError" class="form-hint" style="color:#dc2626;"></p>
+      </div>
+      <div id="superEmailSentNote" class="status-banner ok hidden">
+        입력하신 메일로 인증 링크를 보냈습니다. 메일함(스팸함 포함)을 확인해 링크를 눌러주세요. 링크를 누르면 이 페이지로 자동으로 돌아와 인증이 완료됩니다.
+      </div>
     </div>
 
     <!-- 기관 생성 (Google 로그인 후, 소속 기관이 없는 경우) -->
@@ -218,15 +225,24 @@
       <div class="right"><button class="btn btn-secondary btn-sm" onclick="logout()">로그아웃</button></div>
     </div>
 
-    <div class="section-heading">부서 관리 · 접속 비밀번호</div>
-    <p class="section-sub">부서를 등록하면 접속 비밀번호가 자동 발급됩니다. 직원들에게 기관명 + 부서명 + 비밀번호를 안내해주세요. 직원 명단은 별도로 올리지 않고, 직원이 처음 접속할 때 본인이 직접 팀·이름·고유번호를 입력해 등록합니다.</p>
+    <div class="section-heading">부서 · 직원명단 엑셀 업로드</div>
+    <p class="section-sub">
+      1행은 머리글로 두고, <strong>"기관명"</strong>과 <strong>"부서명"</strong> 열은 반드시 포함해주세요(이 두 열만 있어도 부서 등록은 가능합니다). 가능하면 <strong>"팀명"·"이름"·"고유번호"(사번 등)·"구분"(공무원/기타)</strong> 열도 함께 채워서 올리면 전체 직원명단까지 한 번에 반영됩니다.
+      기관명 칸의 값이 지금 로그인한 기관명과 다른 행은 자동으로 제외되니, 여러 기관이 섞인 전체 명단 파일을 그대로 올려도 안전합니다. 다시 업로드해도 기존 부서 비밀번호와 이미 제출된 이수기록은 그대로 유지되고, 새로운 부서·직원만 추가/갱신됩니다.
+    </p>
+    <div class="card-box">
+      <input type="file" id="rosterFile" accept=".xlsx,.xls,.csv" />
+      <button class="btn btn-excel btn-sm" style="margin-top:10px;" onclick="uploadRoster()">업로드 및 반영</button>
+      <p id="rosterStatus" class="form-hint"></p>
+    </div>
+    <p class="section-sub">부서 한두 개만 빠르게 추가하려면 아래에서 직접 입력해도 됩니다.</p>
     <div class="card-box">
       <div class="btn-row">
         <input type="text" id="newDeptName" placeholder="새 부서명" style="flex:1; padding:10px; border:1px solid #cbd5e1; border-radius:8px;" />
         <button class="btn btn-sm" style="flex:0 0 auto;" onclick="addDepartment()">추가</button>
       </div>
     </div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서명</th><th>등록된 직원 수</th><th>접속 비밀번호</th><th></th></tr></thead><tbody id="deptPwTable"></tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서명</th><th>명단 인원</th><th>접속(등록) 인원</th><th>접속 비밀번호</th><th></th></tr></thead><tbody id="deptPwTable"></tbody></table></div>
 
     <div class="section-heading">의무교육 담당자 계정 관리</div>
     <p class="section-sub">담당자의 실제 Google 이메일을 등록해두면, 담당자가 그 계정으로 로그인할 때 인증됩니다. 담당자는 로그인 후 본인이 맡을 교육과정을 직접 등록·수정합니다.</p>
@@ -350,13 +366,12 @@
    (Firestore 만 사용합니다. Storage는 사용하지 않습니다 - 이수증 원본은 저장되지 않습니다)
 ===================================================================== */
 const firebaseConfig = {
- apiKey: "AIzaSyCd8ymA-RHbZLjt2wwBoJxlpCNF0YoipLY",
-  authDomain: "filsuedumanger.firebaseapp.com",
-  projectId: "filsuedumanger",
-  storageBucket: "filsuedumanger.firebasestorage.app",
-  messagingSenderId: "523230876671",
-  appId: "1:523230876671:web:18b77913d9a3e2e6114dca",
-  measurementId: "G-WKZFJ2JNCY"
+  apiKey: "여기에 apiKey",
+  authDomain: "여기에 authDomain",
+  projectId: "여기에 projectId",
+  storageBucket: "여기에 storageBucket",
+  messagingSenderId: "여기에 messagingSenderId",
+  appId: "여기에 appId"
 };
 
 let db = null, auth = null, googleProvider = null;
@@ -409,6 +424,9 @@ function logout() {
   document.getElementById('empRegisterStep').classList.add('hidden');
   document.getElementById('panelCreateOrg').classList.add('hidden');
   document.getElementById('panelSuper').classList.remove('hidden');
+  document.getElementById('superEmailStep').classList.remove('hidden');
+  document.getElementById('superEmailSentNote').classList.add('hidden');
+  document.getElementById('superEmail').value = '';
   showView('viewLogin');
   switchLoginTab('super');
 }
@@ -429,22 +447,62 @@ function fmtDate(ts) {
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
-/* ============================== 총괄관리자 ============================== */
-function handleGoogleLogin() {
+/* ============================== 총괄관리자 (이메일 인증) ============================== */
+const SUPER_ADMIN_ALLOWED_DOMAINS = ['korea.kr', 'go.kr', 'or.kr', 'ac.kr', 're.kr', 'naver.com'];
+function isAllowedSuperEmail(email) {
+  const domain = (email.split('@')[1] || '').toLowerCase().trim();
+  if (!domain) return false;
+  return SUPER_ADMIN_ALLOWED_DOMAINS.some(suffix => domain === suffix || domain.endsWith('.' + suffix));
+}
+
+function sendSuperAdminVerification() {
   if (!auth) return alert('Firebase 설정을 먼저 완료해주세요.');
-  auth.signInWithPopup(googleProvider).then(async (result) => {
-    const user = result.user;
-    const snap = await db.collection('institutions').where('adminUid', '==', user.uid).limit(1).get();
-    if (snap.empty) {
-      document.getElementById('panelCreateOrg').classList.remove('hidden');
-      document.getElementById('panelSuper').classList.add('hidden');
-    } else {
-      const doc = snap.docs[0];
-      state.orgId = doc.id; state.orgName = doc.data().name; state.orgType = doc.data().type;
-      state.role = 'super';
-      loadSuperAdminDashboard();
-    }
-  }).catch(e => alert('로그인 실패: ' + e.message));
+  const email = document.getElementById('superEmail').value.trim();
+  const errEl = document.getElementById('superEmailError');
+  errEl.textContent = '';
+  if (!email) return;
+  if (!isAllowedSuperEmail(email)) {
+    errEl.textContent = '소속 기관 이메일(korea.kr/go.kr/or.kr/ac.kr/re.kr) 또는 네이버 이메일만 사용할 수 있습니다.';
+    return;
+  }
+  const actionCodeSettings = { url: window.location.href.split('?')[0], handleCodeInApp: true };
+  auth.sendSignInLinkToEmail(email, actionCodeSettings).then(() => {
+    localStorage.setItem('superAdminPendingEmail', email);
+    document.getElementById('superEmailStep').classList.add('hidden');
+    document.getElementById('superEmailSentNote').classList.remove('hidden');
+  }).catch(e => { errEl.textContent = '메일 발송 실패: ' + e.message; });
+}
+
+async function completeSuperAdminEmailLink() {
+  if (!auth || !auth.isSignInWithEmailLink(window.location.href)) return;
+  let email = localStorage.getItem('superAdminPendingEmail');
+  if (!email) email = prompt('인증에 사용한 이메일 주소를 다시 입력해주세요.');
+  if (!email || !isAllowedSuperEmail(email)) {
+    alert('허용되지 않은 이메일이거나 이메일 확인이 취소되었습니다.');
+    return;
+  }
+  try {
+    const result = await auth.signInWithEmailLink(email, window.location.href);
+    localStorage.removeItem('superAdminPendingEmail');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    await afterSuperAdminAuthenticated(result.user);
+  } catch (e) {
+    alert('인증 실패: ' + e.message);
+  }
+}
+
+async function afterSuperAdminAuthenticated(user) {
+  const snap = await db.collection('institutions').where('adminUid', '==', user.uid).limit(1).get();
+  if (snap.empty) {
+    switchLoginTab('super');
+    document.getElementById('panelCreateOrg').classList.remove('hidden');
+    document.getElementById('panelSuper').classList.add('hidden');
+  } else {
+    const doc = snap.docs[0];
+    state.orgId = doc.id; state.orgName = doc.data().name; state.orgType = doc.data().type;
+    state.role = 'super';
+    loadSuperAdminDashboard();
+  }
 }
 
 async function handleCreateOrg(e) {
@@ -470,19 +528,116 @@ async function loadSuperAdminDashboard() {
 }
 
 async function refreshDeptPasswordTable() {
-  const deptSnap = await db.collection('institutions').doc(state.orgId).collection('departments').orderBy('name').get();
-  const empSnap = await db.collection('institutions').doc(state.orgId).collection('employees').get();
-  const counts = {};
-  empSnap.forEach(d => { const dep = d.data().deptId; counts[dep] = (counts[dep]||0)+1; });
+  const orgRef = db.collection('institutions').doc(state.orgId);
+  const deptSnap = await orgRef.collection('departments').orderBy('name').get();
+  const rosterSnap = await orgRef.collection('roster').get();
+  const empSnap = await orgRef.collection('employees').get();
+  const rosterCounts = {}; rosterSnap.forEach(d => { const dep = d.data().deptId; rosterCounts[dep] = (rosterCounts[dep]||0)+1; });
+  const empCounts = {}; empSnap.forEach(d => { const dep = d.data().deptId; empCounts[dep] = (empCounts[dep]||0)+1; });
   const tbody = document.getElementById('deptPwTable');
   tbody.innerHTML = '';
   deptSnap.forEach(d => {
     const v = d.data();
-    tbody.innerHTML += `<tr><td>${escHtml(v.name)}</td><td>${counts[d.id]||0}명</td><td><code>${escHtml(v.password)}</code></td>
+    tbody.innerHTML += `<tr><td>${escHtml(v.name)}</td><td>${rosterCounts[d.id]||0}명</td><td>${empCounts[d.id]||0}명</td><td><code>${escHtml(v.password)}</code></td>
       <td><button class="btn btn-sm btn-secondary" onclick="regenDeptPassword('${d.id}')">재발급</button>
       <button class="btn btn-sm btn-danger" onclick="deleteDepartment('${d.id}')">삭제</button></td></tr>`;
   });
-  if (deptSnap.empty) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#94a3b8;">등록된 부서가 없습니다.</td></tr>';
+  if (deptSnap.empty) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">등록된 부서가 없습니다.</td></tr>';
+}
+
+function sanitizeDocId(raw) {
+  const s = String(raw || '').trim().replace(/[\/\.\#\$\[\]]/g, '_').slice(0, 300);
+  return s || ('id_' + Math.random().toString(36).slice(2, 10));
+}
+
+async function uploadRoster() {
+  const fileInput = document.getElementById('rosterFile');
+  const statusEl = document.getElementById('rosterStatus');
+  if (!fileInput.files[0]) return alert('엑셀 파일을 선택해주세요.');
+  statusEl.textContent = '업로드 중...';
+  try {
+    const file = fileInput.files[0];
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+    if (!rows.length) { statusEl.textContent = '빈 파일입니다.'; return; }
+
+    const header = rows[0].map(h => String(h || '').trim());
+    const findCol = (keywords) => header.findIndex(h => keywords.some(k => h.indexOf(k) >= 0));
+    const orgCol = findCol(['기관']);
+    const deptCol = findCol(['부서']);
+    const teamCol = findCol(['팀']);
+    const nameCol = findCol(['이름', '성명']);
+    const codeCol = findCol(['고유', '사번', '번호']);
+    const typeCol = findCol(['구분']);
+
+    if (orgCol < 0 || deptCol < 0) {
+      statusEl.textContent = '엑셀 1행(머리글)에 "기관명"과 "부서명" 열이 반드시 있어야 합니다.';
+      return;
+    }
+
+    let skippedOrgMismatch = 0;
+    const validRows = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || !r[deptCol]) continue;
+      const org = String(r[orgCol] || '').trim();
+      const dept = String(r[deptCol]).trim();
+      if (!dept) continue;
+      if (org && org !== state.orgName.trim()) { skippedOrgMismatch++; continue; }
+      const team = teamCol >= 0 && r[teamCol] ? String(r[teamCol]).trim() : '';
+      const name = nameCol >= 0 && r[nameCol] ? String(r[nameCol]).trim() : '';
+      const code = codeCol >= 0 && r[codeCol] ? String(r[codeCol]).trim() : '';
+      const typeRaw = typeCol >= 0 && r[typeCol] ? String(r[typeCol]).trim() : '';
+      let employeeType = state.orgType === 'government' ? '공무원' : '기타';
+      if (typeRaw.indexOf('공무원') >= 0) employeeType = '공무원';
+      else if (typeRaw) employeeType = '기타';
+      validRows.push({ dept, team, name, code, employeeType });
+    }
+    if (!validRows.length) { statusEl.textContent = '반영할 부서/직원 데이터를 찾지 못했습니다.'; return; }
+
+    const orgRef = db.collection('institutions').doc(state.orgId);
+    const existingDeptSnap = await orgRef.collection('departments').get();
+    const deptByName = {};
+    existingDeptSnap.forEach(d => { deptByName[d.data().name] = d.id; });
+
+    const uniqueDepts = [...new Set(validRows.map(r => r.dept))];
+    let newDeptCount = 0;
+    let batch = db.batch(); let opCount = 0;
+    for (const dn of uniqueDepts) {
+      if (!deptByName[dn]) {
+        const ref = orgRef.collection('departments').doc();
+        deptByName[dn] = ref.id;
+        batch.set(ref, { name: dn, password: randPassword(8) });
+        newDeptCount++;
+        opCount++;
+        if (opCount >= 400) { await batch.commit(); batch = db.batch(); opCount = 0; }
+      }
+    }
+    await batch.commit();
+
+    const rosterRows = validRows.filter(r => r.name);
+    batch = db.batch(); opCount = 0;
+    for (const r of rosterRows) {
+      const deptId = deptByName[r.dept];
+      const docId = r.code ? sanitizeDocId('c_' + r.code) : sanitizeDocId('n_' + r.dept + '_' + r.team + '_' + r.name);
+      const ref = orgRef.collection('roster').doc(docId);
+      batch.set(ref, { deptId, deptName: r.dept, team: r.team, name: r.name, employeeCode: r.code, employeeType: r.employeeType });
+      opCount++;
+      if (opCount >= 400) { await batch.commit(); batch = db.batch(); opCount = 0; }
+    }
+    await batch.commit();
+
+    let msg = `완료: 부서 ${uniqueDepts.length}개(신규 ${newDeptCount}개), 직원명단 ${rosterRows.length}명 반영되었습니다.`;
+    if (skippedOrgMismatch) msg += ` (기관명이 달라 제외된 행 ${skippedOrgMismatch}건)`;
+    statusEl.textContent = msg;
+    refreshDeptPasswordTable();
+    fileInput.value = '';
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = '업로드 중 오류가 발생했습니다: ' + e.message;
+  }
 }
 
 async function regenDeptPassword(deptId) {
@@ -722,18 +877,41 @@ async function downloadCourseResults() {
   const course = state.managerCourses.find(c => c.id === courseId);
   const orgRef = db.collection('institutions').doc(state.orgId);
 
+  // 총괄관리자가 올린 명단(roster)을 기준 명단으로 삼고, 아직 명단에 없지만
+  // 실제로 접속해서 자가등록한 직원(employees)은 빠지지 않도록 추가로 합쳐준다.
+  const rosterSnap = await orgRef.collection('roster').get();
+  const matchKey = e => (e.employeeCode ? 'c:' + e.employeeCode : 'n:' + e.deptName + '|' + (e.team||'') + '|' + e.name);
+  const roster = [];
+  const seenKeys = new Set();
+  rosterSnap.forEach(d => { const v = { source: 'roster', ...d.data() }; roster.push(v); seenKeys.add(matchKey(v)); });
+
   const empSnap = await orgRef.collection('employees').get();
-  let roster = [];
-  empSnap.forEach(d => roster.push({ uid: d.id, ...d.data() }));
-  if (course.target === 'government') roster = roster.filter(e => e.employeeType === '공무원');
+  empSnap.forEach(d => {
+    const v = { source: 'employee', uid: d.id, employeeCode: d.data().employeeCode, ...d.data() };
+    const key = matchKey(v);
+    if (!seenKeys.has(key)) { roster.push(v); seenKeys.add(key); }
+  });
+
+  let filteredRoster = roster;
+  if (course.target === 'government') filteredRoster = roster.filter(e => e.employeeType === '공무원');
 
   const recSnap = await orgRef.collection('records').where('courseId', '==', courseId).get();
-  const recByUid = {};
-  recSnap.forEach(d => { const v = d.data(); recByUid[v.employeeUid] = v; });
+  const recByUid = {}, recByCode = {}, recByNameKey = {};
+  recSnap.forEach(d => {
+    const v = d.data();
+    recByUid[v.employeeUid] = v;
+    if (v.employeeCode) recByCode[v.employeeCode] = v;
+    recByNameKey[v.deptName + '|' + (v.team||'') + '|' + v.employeeName] = v;
+  });
+  function findRecord(e) {
+    if (e.employeeCode && recByCode[e.employeeCode]) return recByCode[e.employeeCode];
+    if (e.uid && recByUid[e.uid]) return recByUid[e.uid];
+    return recByNameKey[e.deptName + '|' + (e.team||'') + '|' + e.name] || null;
+  }
 
   const rows = [['부서','팀','이름','고유번호','구분','제출여부','교육과정명(확인값)','이수증번호','이수기관','이수일자','제출일시']];
-  roster.forEach(e => {
-    const rec = recByUid[e.uid];
+  filteredRoster.forEach(e => {
+    const rec = findRecord(e);
     rows.push([e.deptName, e.team||'', e.name, e.employeeCode||'', e.employeeType||'', rec ? '제출' : '미제출',
       rec ? rec.courseName : '', rec ? rec.certNumber : '', rec ? rec.certOrg : '', rec ? rec.certDate : '',
       rec ? fmtDate(rec.submittedAt) : '']);
@@ -977,6 +1155,7 @@ async function saveCertRecord() {
 }
 
 switchLoginTab('super');
+completeSuperAdminEmailLink();
 </script>
 </body>
 </html>
