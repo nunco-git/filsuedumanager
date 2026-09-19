@@ -15,10 +15,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" crossorigin="anonymous"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" crossorigin="anonymous"></script>
 
-<!-- Tesseract.js (브라우저 내 OCR, 서버 전송 없음) -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" crossorigin="anonymous"></script>
-<!-- pdf.js (이수증이 PDF일 때 첫 페이지를 이미지로 변환해 OCR에 넘기기 위함) -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" crossorigin="anonymous"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -99,16 +95,10 @@
   .modal-box { background: white; border-radius: 14px; padding: 24px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
   .modal-box h2 { margin-top: 0; font-size: 18px; }
 
-  .ocr-progress { font-size: 13px; color: #2563eb; text-align: center; margin: 10px 0; }
-  .cert-preview { max-width: 100%; max-height: 220px; border: 1px solid #e2e8f0; border-radius: 8px; margin: 10px 0; display: block; }
-
-  .xr-row { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-top: 8px; background: #f8fafc; }
-  .xr-row-title { font-size: 12.5px; font-weight: bold; color: #2563eb; margin-bottom: 6px; }
-  .xr-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-  .xr-line label { font-size: 11.5px; font-weight: bold; color: #64748b; white-space: nowrap; }
-  .xr-line input[type="text"], .xr-line select { padding: 5px 7px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 6px; }
-  .xr-line input[type="text"] { flex: 1 1 120px; min-width: 90px; }
-  .xr-line input[type="number"] { width: 52px; padding: 5px 7px; font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .manual-row { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-top: 8px; background: #f8fafc; display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .manual-row .mini-field { display: flex; flex-direction: column; gap: 3px; }
+  .manual-row .mini-field label { font-size: 11.5px; font-weight: bold; color: #64748b; }
+  .manual-row .mini-field input, .manual-row .mini-field select { padding: 6px 8px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px; }
 
   @media (max-width: 640px) {
     body { padding: 8px; } .container { padding: 16px; border-radius: 12px; }
@@ -290,7 +280,7 @@
     </div>
 
     <div class="section-heading">교육과정 등록·관리<button class="btn btn-sm" style="width:auto;" onclick="openCourseModal()">+ 새 교육과정</button></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>이수 사이트</th><th>교육과정명</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>이수증필요</th><th></th></tr></thead><tbody id="mgrCourseTable"></tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>이수 사이트</th><th>교육과정명</th><th>이수기관</th><th>이수증번호</th><th>교육시간</th><th>이수기한</th><th>대상</th><th></th></tr></thead><tbody id="mgrCourseTable"></tbody></table></div>
 
     <div class="section-heading">이수현황 다운로드</div>
     <div class="card-box">
@@ -309,24 +299,23 @@
       <div class="right"><button class="btn btn-secondary btn-sm" onclick="logout()">로그아웃</button></div>
     </div>
     <div class="section-heading">내 의무교육 이수 현황</div>
-    <p class="section-sub">해당하는 교육의 [이수증 제출]을 눌러 이수증 파일을 업로드하면, 정보를 자동으로 인식해드립니다. 인식된 내용은 저장 전 꼭 확인·수정해주세요. 업로드한 파일 자체는 저장되지 않으며, <strong>한 번 저장한 이수 기록은 본인도 수정·삭제할 수 없습니다.</strong> 잘못 제출했다면 총괄관리자에게 정정을 요청해주세요.</p>
+    <p class="section-sub">해당하는 교육의 [이수결과 입력]을 눌러 실제로 이용한 이수 사이트·교육과정명을 고르고, 이수기관과 이수일자를 입력해 저장하세요. <strong>한 번 저장한 이수 기록은 본인도 수정·삭제할 수 없습니다.</strong> 잘못 제출했다면 총괄관리자에게 정정을 요청해주세요.</p>
     <div id="empCourseList"></div>
 
-    <div class="section-heading">부서 이수증 일괄 업로드 (서무 담당자용)</div>
+    <div class="section-heading">부서 이수결과 일괄 등록 (서무 담당자용)</div>
     <p class="section-sub">
-      부서원들의 이수증을 여러 장 한꺼번에 올리면 파일마다 자동으로 인식한 뒤, 어느 직원 것인지 확인·선택해서 저장할 수 있습니다.
-      이수증에 명단상의 이름이 적혀 있으면 담당 직원을 미리 추정해 선택해두지만, <strong>저장 전 반드시 직접 확인해주세요.</strong>
-      이미 제출된 사람은 자동으로 건너뜁니다. 이 방식으로 올린 기록에는 "누가 대신 올렸는지"가 함께 기록됩니다.
+      부서원 여러 명의 이수결과를 한 번에 등록할 수 있습니다. 교육과정을 선택한 뒤 [+ 직원 행 추가]로 직원을 늘려가며 이수기관·이수일자를 입력해주세요.
+      이미 제출된 사람은 저장 시 자동으로 건너뜁니다. 이 방식으로 올린 기록에는 "누가 대신 올렸는지"가 함께 기록됩니다.
     </p>
     <div class="card-box">
-      <div class="form-group"><label>교육과정 선택</label><select id="bulkCourseSelect"></select></div>
-      <div class="form-group"><label>이수증 파일 (여러 개 선택 가능, 이미지 또는 PDF)</label><input type="file" id="bulkFiles" accept="image/*,.pdf" multiple /></div>
-      <button class="btn" onclick="startBulkUpload()">파일 인식 시작</button>
-      <p id="bulkProgress" class="ocr-progress hidden"></p>
-    </div>
-    <div id="bulkResultsWrap" class="hidden">
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>파일</th><th>담당 직원</th><th>교육과정명</th><th>이수증번호</th><th>이수기관</th><th>이수일자</th><th>상태</th></tr></thead><tbody id="bulkResultsTable"></tbody></table></div>
-      <button class="btn btn-excel" onclick="saveBulkResults()">확인한 내용 모두 저장</button>
+      <div class="form-group"><label>교육과정 선택</label><select id="bulkCourseSelect" onchange="onBulkCourseChange()"></select></div>
+      <div id="bulkResultsWrap" class="hidden">
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>담당 직원</th><th>이수 사이트</th><th>교육과정명</th><th>이수기관</th><th>이수일자</th><th>이수증번호</th><th></th></tr></thead><tbody id="bulkResultsTable"></tbody></table></div>
+      </div>
+      <div class="btn-row" style="margin-top:8px;">
+        <button type="button" class="btn btn-secondary" onclick="addBulkRow()">+ 직원 행 추가</button>
+        <button type="button" class="btn btn-excel" onclick="saveBulkResults()">입력한 내용 모두 저장</button>
+      </div>
     </div>
   </div>
 
@@ -346,7 +335,12 @@
       <div class="form-group">
         <label>교육과정명 (인정되는 과정명, 여러 개 가능, 줄바꿈으로 구분)</label>
         <textarea id="courseCurriculumNames" rows="3" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;" placeholder="예: 2026년 성희롱예방교육 기본과정&#10;2026년 성희롱예방교육 관리자과정"></textarea>
-        <p class="form-hint">같은 의무교육이라도 사이트·차수마다 과정명이 다를 수 있습니다. 인정 가능한 과정명을 모두 적어두면 직원이 이수증 제출 시 골라 쓸 수 있습니다.</p>
+        <p class="form-hint">같은 의무교육이라도 사이트·차수마다 과정명이 다를 수 있습니다. 인정 가능한 과정명을 모두 적어두면 직원이 이수결과 입력 시 목록에서 골라 쓸 수 있습니다. 1개만 등록하면 직원 화면에는 선택 없이 바로 그 값으로 보이고, 2개 이상 등록하면 선택 목록이 나타납니다.</p>
+      </div>
+      <div class="form-group">
+        <label>이수기관 (여러 개 가능, 줄바꿈으로 구분)</label>
+        <textarea id="courseCertOrgs" rows="2" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px;" placeholder="예: 지방자치인재개발원"></textarea>
+        <p class="form-hint">이수기관을 등록해두면 직원이 이수결과 입력 시 직접 타이핑하지 않고 목록에서 고를 수 있습니다. 1개만 등록하면 선택 없이 바로 그 값으로 보이고, 2개 이상이면 선택 목록이 나타납니다.</p>
       </div>
       <div class="form-group"><label>교육시간</label><input type="text" id="courseHours" placeholder="예: 4시간" /></div>
       <div class="form-group"><label>이수 기한</label><input type="date" id="courseDeadline" required /></div>
@@ -359,18 +353,9 @@
         </select>
       </div>
       <div class="form-group hidden" id="courseTargetDetailWrap"><label>특정업무 상세 설명</label><input type="text" id="courseTargetDetail" placeholder="예: 위험물 취급 담당자" /></div>
-      <div class="form-group">
-        <label><input type="checkbox" id="courseCertRequired" checked style="width:auto;" /> 이수증 첨부 필요</label>
+      <div class="form-group"><label><input type="checkbox" id="courseCertRequired" style="width:auto; margin-right:6px;" />이수증번호 입력을 필수로 지정</label>
+        <p class="form-hint">체크하면 직원은 이수결과 입력 시 이수증번호를 반드시 입력해야 합니다. 체크하지 않으면 이수증번호는 선택사항입니다.</p>
       </div>
-
-      <details style="margin:14px 0; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px;">
-        <summary style="cursor:pointer; font-weight:bold; font-size:13.5px; color:#334155;">📄 이수증 PDF 자동인식 규칙 설정 (선택)</summary>
-        <p class="form-hint" style="margin-top:8px;">
-          비워두면 일반적인 라벨(성명/과정/발급기관 등)로 자동 인식합니다. 우리 기관이 쓰는 이수증 서식이 따로 있다면, 아래에서 "기준단어" 기준으로 값을 가져올 위치를 지정해두면 이 교육과정에 한해 그 규칙을 먼저 시도합니다.
-          (예: "학습시간" 뒤 → 해당 값, "성명" 다음 줄 → 이수기관)
-        </p>
-        <div id="extractRuleRows"></div>
-      </details>
 
       <div class="btn-row" style="margin-top:16px;">
         <button type="button" class="btn btn-secondary" onclick="closeCourseModal()">취소</button>
@@ -381,33 +366,31 @@
   </div>
 </div>
 
-<!-- 이수증 업로드/OCR 확인 모달 -->
+<!-- 이수결과 입력 모달 -->
 <div id="certModal" class="modal-overlay hidden">
   <div class="modal-box">
-    <h2>이수증 제출 - <span id="certCourseNameLabel"></span></h2>
-    <div id="certTargetNote" class="status-banner info hidden"></div>
-    <div class="form-group">
-      <label>이수증 파일 (이미지 또는 PDF)</label>
-      <input type="file" id="certFile" accept="image/*,.pdf" onchange="handleCertFileSelected()" />
+    <h2>이수결과 입력 - <span id="certCourseNameLabel"></span></h2>
+    <div class="form-group" id="certSiteWrap">
+      <label>이수 사이트</label>
+      <div id="certSiteDisplay" class="form-hint"></div>
+      <select id="certSiteSelect" class="hidden"></select>
     </div>
-    <img id="certPreviewImg" class="cert-preview hidden" />
-    <p id="ocrProgress" class="ocr-progress hidden"></p>
-    <div id="certFormWrap" class="hidden">
-      <div class="status-banner ok" style="text-align:left;">자동 인식된 내용입니다. 실제 이수증과 대조하여 틀린 부분은 꼭 수정한 뒤 저장해주세요.</div>
-      <div class="form-group">
-        <label>교육과정명 (실제로 수강한 과정명을 목록에서 고르거나 직접 입력)</label>
-        <input type="text" id="certCourseNameInput" list="certCourseNameOptions" />
-        <datalist id="certCourseNameOptions"></datalist>
-      </div>
-      <div class="form-group"><label>이수증번호</label><input type="text" id="certNumber" /></div>
-      <div class="form-group"><label>이수기관</label><input type="text" id="certOrg" /></div>
-      <div class="form-group"><label>이수일자</label><input type="date" id="certDate" /></div>
-      <div class="btn-row" style="margin-top:16px;">
-        <button type="button" class="btn btn-secondary" onclick="closeCertModal()">취소</button>
-        <button type="button" class="btn" onclick="saveCertRecord()">확인하고 저장</button>
-      </div>
+    <div class="form-group" id="certCourseNameWrap">
+      <label>교육과정명</label>
+      <div id="certCourseNameDisplay" class="form-hint"></div>
+      <select id="certCourseNameSelect" class="hidden"></select>
     </div>
-    <button type="button" class="btn btn-secondary" id="certCancelOnlyBtn" style="margin-top:16px;" onclick="closeCertModal()">닫기</button>
+    <div class="form-group" id="certOrgWrap">
+      <label>이수기관</label>
+      <div id="certOrgDisplay" class="form-hint"></div>
+      <select id="certOrgSelect" class="hidden"></select>
+    </div>
+    <div class="form-group"><label>이수일자</label><input type="date" id="certDate" /></div>
+    <div class="form-group"><label id="certNumberLabel">이수증번호 (선택)</label><input type="text" id="certNumber" placeholder="이수증에 적힌 번호가 있다면 입력해주세요" /></div>
+    <div class="btn-row" style="margin-top:16px;">
+      <button type="button" class="btn btn-secondary" onclick="closeCertModal()">취소</button>
+      <button type="button" class="btn" onclick="saveCertRecord()">확인하고 저장</button>
+    </div>
   </div>
 </div>
 
@@ -416,7 +399,7 @@
   <div class="modal-box" style="max-width:760px;">
     <h2 id="recordsModalTitle">제출 기록</h2>
     <p class="form-hint">삭제하면 되돌릴 수 없습니다. 정정 사유를 반드시 남겨주세요(삭제 이력은 별도로 보관됩니다).</p>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서</th><th>이름</th><th>고유번호</th><th>이수증번호</th><th>이수기관</th><th>이수일자</th><th></th></tr></thead><tbody id="recordsModalTable"></tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서</th><th>이름</th><th>고유번호</th><th>이수기관</th><th>이수증번호</th><th>이수일자</th><th></th></tr></thead><tbody id="recordsModalTable"></tbody></table></div>
     <button type="button" class="btn btn-secondary" onclick="closeRecordsModal()">닫기</button>
   </div>
 </div>
@@ -448,10 +431,6 @@ try {
   console.error('Firebase 초기화 실패:', e);
 }
 
-if (window.pdfjsLib) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-}
-
 /* ------------------------- 전역 상태 ------------------------- */
 const state = {
   role: null,            // 'super' | 'manager' | 'employee'
@@ -462,7 +441,7 @@ const state = {
   managerCourses: [],      // 담당자 본인 교육과정 캐시
   employeeCourseCache: {}, // 직원 화면에서 courseId -> 교육과정 전체 데이터
   deptRoster: [], deptRecords: [],
-  certContext: null        // { courseId, courseName, certRequired }
+  certContext: null        // { courseId, courseName }
 };
 
 function switchLoginTab(tab) {
@@ -862,7 +841,7 @@ async function refreshRecordsModal() {
   snap.forEach(d => {
     const v = d.data();
     tbody.innerHTML += `<tr><td>${escHtml(v.deptName)}${v.team ? ' / '+escHtml(v.team) : ''}</td><td>${escHtml(v.employeeName)}</td>
-      <td>${escHtml(v.employeeCode||'')}</td><td>${escHtml(v.certNumber||'')}</td><td>${escHtml(v.certOrg||'')}</td><td>${escHtml(v.certDate||'')}</td>
+      <td>${escHtml(v.employeeCode||'')}</td><td>${escHtml(v.certOrg||'')}</td><td>${escHtml(v.certNumber||'')}</td><td>${escHtml(v.certDate||'')}</td>
       <td><button class="btn btn-sm btn-danger" onclick="deleteRecordWithReason('${d.id}')">삭제(정정)</button></td></tr>`;
   });
   if (snap.empty) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">제출된 기록이 없습니다.</td></tr>';
@@ -931,13 +910,13 @@ async function refreshManagerCourseTable() {
     state.managerCourses.push(v);
     const sitesHtml = (v.sites||[]).map(s => `<a href="${escHtml(s)}" target="_blank" rel="noopener">${escHtml(s)}</a>`).join('<br/>') || '-';
     const curriculumHtml = (v.curriculumNames||[]).map(escHtml).join('<br/>') || '-';
-    tbody.innerHTML += `<tr><td>${escHtml(v.name)}</td><td>${sitesHtml}</td><td>${curriculumHtml}</td><td>${escHtml(v.hours||'-')}</td><td>${escHtml(v.deadline)}</td>
+    const certOrgsHtml = (v.certOrgs||[]).map(escHtml).join('<br/>') || '-';
+    tbody.innerHTML += `<tr><td>${escHtml(v.name)}</td><td>${sitesHtml}</td><td>${curriculumHtml}</td><td>${certOrgsHtml}</td><td>${v.certRequired ? '필수' : '선택'}</td><td>${escHtml(v.hours||'-')}</td><td>${escHtml(v.deadline)}</td>
       <td>${targetLabel[v.target]||v.target}${v.target==='specific' ? ' ('+escHtml(v.targetDetail||'')+')' : ''}</td>
-      <td>${v.certRequired ? '필요' : '불필요'}</td>
       <td><button class="btn btn-sm" onclick="openCourseModal('${d.id}')">수정</button></td></tr>`;
     sel.innerHTML += `<option value="${d.id}">${escHtml(v.name)}</option>`;
   });
-  if (snap.empty) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8;">등록한 의무교육이 없습니다. 위 버튼으로 추가해주세요.</td></tr>';
+  if (snap.empty) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8;">등록한 의무교육이 없습니다. 위 버튼으로 추가해주세요.</td></tr>';
 }
 
 function openCourseModal(courseId) {
@@ -950,18 +929,17 @@ function openCourseModal(courseId) {
     document.getElementById('courseName').value = c.name;
     document.getElementById('courseSites').value = (c.sites||[]).join('\n');
     document.getElementById('courseCurriculumNames').value = (c.curriculumNames||[]).join('\n');
+    document.getElementById('courseCertOrgs').value = (c.certOrgs||[]).join('\n');
     document.getElementById('courseHours').value = c.hours || '';
     document.getElementById('courseDeadline').value = c.deadline;
     document.getElementById('courseTarget').value = c.target;
     document.getElementById('courseTargetDetail').value = c.targetDetail || '';
     document.getElementById('courseCertRequired').checked = !!c.certRequired;
-    populateExtractRuleRows(c.extractRules || {});
   } else {
     document.getElementById('courseModalTitle').textContent = '새 의무교육 등록';
-    ['courseName','courseSites','courseCurriculumNames','courseHours','courseDeadline','courseTargetDetail'].forEach(id => document.getElementById(id).value = '');
+    ['courseName','courseSites','courseCurriculumNames','courseCertOrgs','courseHours','courseDeadline','courseTargetDetail'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('courseTarget').value = 'all';
-    document.getElementById('courseCertRequired').checked = true;
-    populateExtractRuleRows({});
+    document.getElementById('courseCertRequired').checked = false;
   }
   onCourseTargetChange();
 }
@@ -975,15 +953,15 @@ async function saveCourse(e) {
   const id = document.getElementById('courseId').value;
   const sites = document.getElementById('courseSites').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 3);
   const curriculumNames = document.getElementById('courseCurriculumNames').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 10);
+  const certOrgs = document.getElementById('courseCertOrgs').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 10);
   const payload = {
     name: document.getElementById('courseName').value.trim(),
-    sites, curriculumNames,
+    sites, curriculumNames, certOrgs,
     hours: document.getElementById('courseHours').value.trim(),
     deadline: document.getElementById('courseDeadline').value,
     target: document.getElementById('courseTarget').value,
     targetDetail: document.getElementById('courseTargetDetail').value.trim(),
     certRequired: document.getElementById('courseCertRequired').checked,
-    extractRules: collectExtractRules(),
     managerId: state.managerId
   };
   const orgRef = db.collection('institutions').doc(state.orgId);
@@ -1045,12 +1023,12 @@ async function downloadCourseResults() {
     return recByNameKey[e.deptName + '|' + (e.team||'') + '|' + e.name] || null;
   }
 
-  const rows = [['부서','팀','이름','고유번호','구분','제출여부','교육과정명(확인값)','이수증번호','이수기관','이수일자','제출일시']];
+  const rows = [['부서','팀','이름','고유번호','구분','제출여부','교육과정명(확인값)','이수 사이트','이수기관','이수일자','이수증번호','제출일시']];
   filteredRoster.forEach(e => {
     const rec = findRecord(e);
     rows.push([e.deptName, e.team||'', e.name, e.employeeCode||'', e.employeeType||'', rec ? '제출' : '미제출',
-      rec ? rec.courseName : '', rec ? rec.certNumber : '', rec ? rec.certOrg : '', rec ? rec.certDate : '',
-      rec ? fmtDate(rec.submittedAt) : '']);
+      rec ? rec.courseName : '', rec ? rec.site : '', rec ? rec.certOrg : '', rec ? rec.certDate : '',
+      rec ? (rec.certNumber||'') : '', rec ? fmtDate(rec.submittedAt) : '']);
   });
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
@@ -1171,11 +1149,11 @@ async function loadEmployeeCourses() {
           <div style="font-size:12.5px; color:#64748b; margin-top:4px;">이수기한: ${escHtml(v.deadline)} · 대상: ${v.target==='specific' ? '특정업무('+escHtml(v.targetDetail||'')+')' : (v.target==='government'?'공무원':'전직원')}</div>
           ${curriculumHtml}
           ${sitesHtml ? '<div style="font-size:12.5px; margin-top:4px;">'+sitesHtml+'</div>' : ''}
-          ${rec ? `<div style="font-size:12.5px; color:#64748b; margin-top:6px;">제출됨 - ${escHtml(rec.courseName||'')} / ${escHtml(rec.certOrg||'')} / ${escHtml(rec.certDate||'')} (수정·삭제 불가)</div>` : ''}
+          ${rec ? `<div style="font-size:12.5px; color:#64748b; margin-top:6px;">제출됨 - ${escHtml(rec.courseName||'')} / ${escHtml(rec.certDate||'')} (수정·삭제 불가)</div>` : ''}
         </div>
         <div style="text-align:right;">
           <span class="badge ${rec ? 'badge-ok' : 'badge-no'}">${rec ? '제출완료' : '미제출'}</span><br/>
-          ${rec ? '' : `<button class="btn btn-sm" style="margin-top:8px;" onclick="openCertModal('${d.id}')">이수증 제출</button>`}
+          ${rec ? '' : `<button class="btn btn-sm" style="margin-top:8px;" onclick="openCertModal('${d.id}')">이수결과 입력</button>`}
         </div>
       </div>
     </div>`;
@@ -1193,15 +1171,16 @@ async function loadEmployeeCourses() {
   resetBulkUpload();
 }
 
-/* ---------- 부서 이수증 일괄 업로드(서무 담당자용) ---------- */
+/* ---------- 부서 이수결과 일괄 등록(서무 담당자용) ---------- */
 let bulkEntries = [];
 
 function resetBulkUpload() {
   bulkEntries = [];
-  document.getElementById('bulkFiles').value = '';
-  document.getElementById('bulkResultsWrap').classList.add('hidden');
-  document.getElementById('bulkResultsTable').innerHTML = '';
-  document.getElementById('bulkProgress').classList.add('hidden');
+  renderBulkRows();
+}
+function onBulkCourseChange() {
+  bulkEntries = [];
+  renderBulkRows();
 }
 
 function rosterOptionsHtml(selectedKey) {
@@ -1209,545 +1188,184 @@ function rosterOptionsHtml(selectedKey) {
   (state.deptRoster || []).slice().sort((a,b) => a.name.localeCompare(b.name, 'ko')).forEach(p => {
     const key = employeeMatchKey({ employeeCode: p.employeeCode, deptName: state.deptName, team: p.team, name: p.name });
     const sel = key === selectedKey ? 'selected' : '';
-    html += `<option value="${escHtml(key)}" data-name="${escHtml(p.name)}" data-team="${escHtml(p.team||'')}" data-code="${escHtml(p.employeeCode||'')}" ${sel}>${escHtml(p.name)}${p.team ? ' ('+escHtml(p.team)+')' : ''}</option>`;
+    html += `<option value="${escHtml(key)}" ${sel}>${escHtml(p.name)}${p.team ? ' ('+escHtml(p.team)+')' : ''}</option>`;
   });
   return html;
 }
 
-async function startBulkUpload() {
-  const files = Array.from(document.getElementById('bulkFiles').files || []);
-  if (!files.length) return alert('이수증 파일을 선택해주세요.');
+function addBulkRow() {
   const courseId = document.getElementById('bulkCourseSelect').value;
   if (!courseId) return alert('교육과정을 선택해주세요.');
-
-  const progressEl = document.getElementById('bulkProgress');
-  progressEl.classList.remove('hidden');
-  bulkEntries = [];
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    progressEl.textContent = `(${i+1}/${files.length}) ${file.name} 인식 중...`;
-    try {
-      const { text, guess } = await ocrExtractFromFile(file, msg => { progressEl.textContent = `(${i+1}/${files.length}) ${file.name} - ${msg}`; });
-      const courseInfo = (state.employeeCourseCache || {})[courseId] || {};
-      const custom = applyExtractRules(text, courseInfo.extractRules);
-      const nameGuess = custom.personName || guess.guessedName;
-      const guessedRoster = (state.deptRoster || []).find(p => p.name === nameGuess);
-      const key = guessedRoster ? employeeMatchKey({ employeeCode: guessedRoster.employeeCode, deptName: state.deptName, team: guessedRoster.team, name: guessedRoster.name }) : '';
-      const matchedCurriculum = (courseInfo.curriculumNames || []).find(n => n && text.indexOf(n) >= 0);
-      bulkEntries.push({
-        fileName: file.name, courseId,
-        courseName: matchedCurriculum || custom.courseName || guess.courseNameGuess || (courseInfo.curriculumNames||[])[0] || courseInfo.name || '',
-        matchedKey: key, manualName: key ? '' : (nameGuess || ''),
-        certNumber: custom.certNumber || guess.certNumber, certOrg: custom.certOrg || guess.certOrg, certDate: custom.certDate || guess.certDate,
-        status: '확인 대기'
-      });
-    } catch (e) {
-      console.error(e);
-      const courseInfo = (state.employeeCourseCache || {})[courseId] || {};
-      bulkEntries.push({ fileName: file.name, courseId, courseName: courseInfo.name || '', matchedKey: '', manualName: '', certNumber: '', certOrg: '', certDate: '', status: '인식 실패 - 직접 입력 필요' });
-    }
-  }
-  progressEl.classList.add('hidden');
-  renderBulkResults();
+  const course = (state.employeeCourseCache || {})[courseId] || {};
+  bulkEntries.push({
+    matchedKey: '', manualName: '',
+    site: (course.sites || [])[0] || '',
+    courseName: (course.curriculumNames || [])[0] || course.name || '',
+    certOrg: (course.certOrgs || [])[0] || '', certDate: '', certNumber: ''
+  });
+  renderBulkRows();
 }
+function removeBulkRow(i) { bulkEntries.splice(i, 1); renderBulkRows(); }
+function onBulkNameChange(i, selectEl) { bulkEntries[i].matchedKey = selectEl.value; bulkEntries[i].manualName = ''; renderBulkRows(); }
 
-function renderBulkResults() {
-  const wrap = document.getElementById('bulkResultsWrap');
-  const tbody = document.getElementById('bulkResultsTable');
-  wrap.classList.remove('hidden');
-  tbody.innerHTML = bulkEntries.map((e, i) => {
-    const courseInfo = (state.employeeCourseCache || {})[e.courseId] || {};
-    const datalistId = 'bulkCourseNameOptions' + i;
-    const datalistHtml = '<datalist id="'+datalistId+'">' + (courseInfo.curriculumNames||[]).map(n => `<option value="${escHtml(n)}"></option>`).join('') + '</datalist>';
-    return `
-    <tr>
-      <td>${escHtml(e.fileName)}</td>
+function renderBulkRows() {
+  const courseId = document.getElementById('bulkCourseSelect').value;
+  const course = (state.employeeCourseCache || {})[courseId] || {};
+  const sites = course.sites || [];
+  const curriculumNames = course.curriculumNames || [];
+  const certOrgs = course.certOrgs || [];
+  document.getElementById('bulkResultsWrap').classList.toggle('hidden', bulkEntries.length === 0);
+  document.getElementById('bulkResultsTable').innerHTML = bulkEntries.map((e, i) => {
+    const siteCell = sites.length > 1
+      ? `<select onchange="bulkEntries[${i}].site=this.value">${sites.map(s => `<option value="${escHtml(s)}" ${s===e.site?'selected':''}>${escHtml(s)}</option>`).join('')}</select>`
+      : `<span style="font-size:12.5px; color:#64748b;">${sites[0] ? escHtml(sites[0]) : '-'}</span>`;
+    const nameCell = curriculumNames.length > 1
+      ? `<select onchange="bulkEntries[${i}].courseName=this.value">${curriculumNames.map(n => `<option value="${escHtml(n)}" ${n===e.courseName?'selected':''}>${escHtml(n)}</option>`).join('')}</select>`
+      : `<span style="font-size:12.5px;">${escHtml(e.courseName || '-')}</span>`;
+    const certOrgCell = certOrgs.length > 1
+      ? `<select onchange="bulkEntries[${i}].certOrg=this.value">${certOrgs.map(o => `<option value="${escHtml(o)}" ${o===e.certOrg?'selected':''}>${escHtml(o)}</option>`).join('')}</select>`
+      : `<span style="font-size:12.5px;">${escHtml(e.certOrg || '-')}</span>`;
+    return `<tr>
       <td>
         <select onchange="onBulkNameChange(${i}, this)">${rosterOptionsHtml(e.matchedKey)}</select>
         ${e.matchedKey ? '' : `<input type="text" placeholder="이름 직접입력" value="${escHtml(e.manualName)}" style="margin-top:4px; width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].manualName=this.value" />`}
       </td>
-      <td>
-        <input type="text" value="${escHtml(e.courseName||'')}" list="${datalistId}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].courseName=this.value" />
-        ${datalistHtml}
-      </td>
-      <td><input type="text" value="${escHtml(e.certNumber)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certNumber=this.value" /></td>
-      <td><input type="text" value="${escHtml(e.certOrg)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certOrg=this.value" /></td>
+      <td>${siteCell}</td>
+      <td>${nameCell}</td>
+      <td>${certOrgCell}</td>
       <td><input type="date" value="${escHtml(e.certDate)}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certDate=this.value" /></td>
-      <td>${escHtml(e.status)}</td>
+      <td><input type="text" value="${escHtml(e.certNumber||'')}" placeholder="${course.certRequired ? '필수' : '선택'}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px;" oninput="bulkEntries[${i}].certNumber=this.value" /></td>
+      <td><button type="button" class="btn btn-sm btn-danger" onclick="removeBulkRow(${i})">삭제</button></td>
     </tr>`;
   }).join('');
 }
 
-function onBulkNameChange(i, selectEl) {
-  bulkEntries[i].matchedKey = selectEl.value;
-  bulkEntries[i].manualName = '';
-  renderBulkResults();
-}
-
 async function saveBulkResults() {
+  const courseId = document.getElementById('bulkCourseSelect').value;
+  if (!courseId) return alert('교육과정을 선택해주세요.');
+  if (!bulkEntries.length) return alert('추가한 행이 없습니다. [+ 직원 행 추가]로 먼저 행을 추가해주세요.');
+  const course = (state.employeeCourseCache || {})[courseId] || {};
   const orgRef = db.collection('institutions').doc(state.orgId);
   let okCount = 0, dupCount = 0, failCount = 0;
   for (const e of bulkEntries) {
     let entryInfo;
     if (e.matchedKey) {
       const roster = (state.deptRoster || []).find(p => employeeMatchKey({ employeeCode: p.employeeCode, deptName: state.deptName, team: p.team, name: p.name }) === e.matchedKey);
-      if (!roster) { e.status = '직원 확인 실패'; failCount++; continue; }
+      if (!roster) { failCount++; continue; }
       entryInfo = { employeeCode: roster.employeeCode, deptName: state.deptName, team: roster.team, name: roster.name };
     } else if (e.manualName && e.manualName.trim()) {
       entryInfo = { employeeCode: '', deptName: state.deptName, team: '', name: e.manualName.trim() };
     } else {
-      e.status = '담당 직원 미선택'; failCount++; continue;
+      failCount++; continue;
     }
+    if (course.certRequired && !(e.certNumber || '').trim()) { failCount++; continue; }
 
-    const courseName = (e.courseName || '').trim() || ((state.employeeCourseCache||{})[e.courseId]||{}).name || '';
-    const recRef = orgRef.collection('records').doc(recordDocId(e.courseId, entryInfo));
+    const recRef = orgRef.collection('records').doc(recordDocId(courseId, entryInfo));
     const payload = {
-      courseId: e.courseId, courseName,
+      courseId, courseName: e.courseName || '',
+      site: e.site || '',
       employeeUid: null,
       deptId: state.deptId, deptName: state.deptName, team: entryInfo.team || '',
       employeeName: entryInfo.name, employeeCode: entryInfo.employeeCode || '',
-      certNumber: (e.certNumber||'').trim(), certOrg: (e.certOrg||'').trim(), certDate: e.certDate || '',
+      certOrg: (e.certOrg || '').trim(), certNumber: (e.certNumber || '').trim(), certDate: e.certDate || '',
       submittedByUid: state.uid, submittedByName: state.employeeName, submittedByRole: 'proxy',
       submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     try {
       await recRef.set(payload);
-      e.status = '저장 완료'; okCount++;
+      okCount++;
     } catch (err) {
-      e.status = '이미 제출됨(건너뜀)'; dupCount++;
+      dupCount++;
     }
   }
-  renderBulkResults();
-  alert(`저장 완료 ${okCount}건, 이미 제출되어 건너뜀 ${dupCount}건, 실패 ${failCount}건`);
+  alert(`저장 완료 ${okCount}건, 이미 제출되어 건너뜀/실패(필수 이수증번호 누락 포함) ${dupCount + failCount}건`);
+  bulkEntries = [];
+  renderBulkRows();
   loadEmployeeCourses();
 }
 
-/* ---------- 이수증 업로드 + 브라우저 OCR ---------- */
+/* ---------- 이수결과 입력 (직원 본인) ---------- */
 function openCertModal(courseId) {
   const course = (state.employeeCourseCache || {})[courseId] || {};
   const courseName = course.name || '';
-  state.certContext = { courseId, courseName, certRequired: !!course.certRequired };
+  state.certContext = { courseId, courseName };
   document.getElementById('certCourseNameLabel').textContent = courseName;
   document.getElementById('certModal').classList.remove('hidden');
-  document.getElementById('certFile').value = '';
-  document.getElementById('certPreviewImg').classList.add('hidden');
-  document.getElementById('certFormWrap').classList.add('hidden');
-  document.getElementById('ocrProgress').classList.add('hidden');
-  const note = document.getElementById('certTargetNote');
-  if (!course.certRequired) {
-    note.classList.remove('hidden');
-    note.textContent = '이 교육은 이수증 첨부가 필수는 아닙니다. 파일이 없다면 아래에서 정보만 직접 입력해 저장할 수 있습니다.';
-  } else note.classList.add('hidden');
+
+  const sites = course.sites || [];
+  const siteSelect = document.getElementById('certSiteSelect');
+  const siteDisplay = document.getElementById('certSiteDisplay');
+  if (sites.length > 1) {
+    siteSelect.innerHTML = sites.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+    siteSelect.classList.remove('hidden');
+    siteDisplay.classList.add('hidden');
+  } else {
+    siteSelect.classList.add('hidden');
+    siteDisplay.classList.remove('hidden');
+    siteDisplay.innerHTML = sites[0] ? `<a href="${escHtml(sites[0])}" target="_blank" rel="noopener">${escHtml(sites[0])}</a>` : '등록된 이수 사이트가 없습니다.';
+  }
+  document.getElementById('certSiteWrap').classList.toggle('hidden', sites.length === 0);
 
   const curriculumNames = course.curriculumNames || [];
-  document.getElementById('certCourseNameOptions').innerHTML = curriculumNames.map(n => `<option value="${escHtml(n)}"></option>`).join('');
-  document.getElementById('certCourseNameInput').value = curriculumNames[0] || courseName;
-  document.getElementById('certNumber').value = '';
-  document.getElementById('certOrg').value = '';
+  const nameSelect = document.getElementById('certCourseNameSelect');
+  const nameDisplay = document.getElementById('certCourseNameDisplay');
+  if (curriculumNames.length > 1) {
+    nameSelect.innerHTML = curriculumNames.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+    nameSelect.classList.remove('hidden');
+    nameDisplay.classList.add('hidden');
+  } else {
+    nameSelect.classList.add('hidden');
+    nameDisplay.classList.remove('hidden');
+    nameDisplay.textContent = curriculumNames[0] || courseName;
+  }
+
+  const certOrgs = course.certOrgs || [];
+  const certOrgSelect = document.getElementById('certOrgSelect');
+  const certOrgDisplay = document.getElementById('certOrgDisplay');
+  if (certOrgs.length > 1) {
+    certOrgSelect.innerHTML = certOrgs.map(o => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join('');
+    certOrgSelect.classList.remove('hidden');
+    certOrgDisplay.classList.add('hidden');
+  } else {
+    certOrgSelect.classList.add('hidden');
+    certOrgDisplay.classList.remove('hidden');
+    certOrgDisplay.textContent = certOrgs[0] || '등록된 이수기관이 없습니다.';
+  }
+
   document.getElementById('certDate').value = '';
+  document.getElementById('certNumber').value = '';
+  document.getElementById('certNumberLabel').textContent = course.certRequired ? '이수증번호 (필수)' : '이수증번호 (선택)';
 }
 function closeCertModal() { document.getElementById('certModal').classList.add('hidden'); state.certContext = null; }
 
-/* =====================================================================
-   담당자가 사전 설정할 수 있는 "이수증 PDF 자동인식 규칙" 엔진.
-   각 필드(이수증번호/이름/교육과정명/이수기관/이수일자)마다 "기준단어" 기준으로
-   뒤/앞/다음줄/사이값/자기자신 + 몇 번째로 나온 것인지(순번) + 몇 단어·몇 글자를 가져올지(범위)를
-   담당자가 교육과정 등록 화면에서 지정해두면, 직원이 이수증을 올렸을 때 그 규칙을 먼저 시도한다.
-   규칙을 비워두면(기준단어 없음) 기존 일반 라벨 기반 추정(guessCertFields)으로 자동 대체된다.
-===================================================================== */
-const EXTRACT_RULE_FIELDS = [
-  { key: 'certNumber', label: '이수증번호' },
-  { key: 'personName', label: '이름(직원 매칭용)' },
-  { key: 'courseName', label: '교육과정명' },
-  { key: 'certOrg', label: '이수기관' },
-  { key: 'certDate', label: '이수일자' }
-];
-
-function renderExtractRuleRows() {
-  const wrap = document.getElementById('extractRuleRows');
-  if (!wrap || wrap.dataset.built) return;
-  wrap.dataset.built = '1';
-  wrap.innerHTML = EXTRACT_RULE_FIELDS.map(f => `
-    <div class="xr-row">
-      <div class="xr-row-title">${escHtml(f.label)}</div>
-      <div class="xr-line">
-        <label>기준단어:</label>
-        <input type="text" id="xrKey_${f.key}" placeholder="예: 학습시간, 성명, 과정" />
-        <label>탐색방식:</label>
-        <select id="xrDir_${f.key}" onchange="toggleXrBetween('${f.key}')">
-          <option value="after" selected>기준단어 뒤</option>
-          <option value="before">기준단어 앞</option>
-          <option value="nextLine">다음 줄 전체</option>
-          <option value="between">기준단어 사이값</option>
-          <option value="self">기준단어 자체</option>
-        </select>
-      </div>
-      <div class="xr-line xr-between" id="xrBetweenRow_${f.key}" style="display:none;">
-        <label>끝 기준단어:</label>
-        <input type="text" id="xrKeyEnd_${f.key}" placeholder="예: 호, 시간" />
-      </div>
-      <div class="xr-line">
-        <label>순번:</label>
-        <select id="xrIdx_${f.key}" onchange="toggleXrIdxNum('${f.key}')">
-          <option value="1" selected>첫 번째</option>
-          <option value="2">두 번째</option>
-          <option value="3">세 번째</option>
-          <option value="n">N번째</option>
-          <option value="last">마지막</option>
-        </select>
-        <input type="number" id="xrIdxNum_${f.key}" min="1" value="1" style="display:none;" />
-        <label>범위:</label>
-        <select id="xrRange_${f.key}" onchange="toggleXrChars('${f.key}')">
-          <option value="word" selected>1단어</option>
-          <option value="word2">2단어</option>
-          <option value="word3">3단어</option>
-          <option value="word4">4단어</option>
-          <option value="line">줄 끝까지</option>
-          <option value="chars">N글자</option>
-        </select>
-        <input type="number" id="xrChars_${f.key}" min="1" value="6" style="display:none;" />
-      </div>
-    </div>`).join('');
-}
-function toggleXrBetween(key) {
-  document.getElementById('xrBetweenRow_' + key).style.display = document.getElementById('xrDir_' + key).value === 'between' ? 'flex' : 'none';
-}
-function toggleXrIdxNum(key) {
-  document.getElementById('xrIdxNum_' + key).style.display = document.getElementById('xrIdx_' + key).value === 'n' ? 'inline-block' : 'none';
-}
-function toggleXrChars(key) {
-  document.getElementById('xrChars_' + key).style.display = document.getElementById('xrRange_' + key).value === 'chars' ? 'inline-block' : 'none';
-}
-function collectExtractRules() {
-  renderExtractRuleRows();
-  const rules = {};
-  EXTRACT_RULE_FIELDS.forEach(f => {
-    const key = (document.getElementById('xrKey_' + f.key).value || '').trim();
-    if (!key) return; // 기준단어를 비워두면 이 필드는 규칙 미설정(일반 자동인식으로 대체)
-    rules[f.key] = {
-      key,
-      dir: document.getElementById('xrDir_' + f.key).value,
-      keyEnd: (document.getElementById('xrKeyEnd_' + f.key).value || '').trim(),
-      idx: document.getElementById('xrIdx_' + f.key).value,
-      idxNum: parseInt(document.getElementById('xrIdxNum_' + f.key).value, 10) || 1,
-      range: document.getElementById('xrRange_' + f.key).value,
-      charsNum: parseInt(document.getElementById('xrChars_' + f.key).value, 10) || 1
-    };
-  });
-  return rules;
-}
-function populateExtractRuleRows(rules) {
-  renderExtractRuleRows();
-  rules = rules || {};
-  EXTRACT_RULE_FIELDS.forEach(f => {
-    const r = rules[f.key] || {};
-    document.getElementById('xrKey_' + f.key).value = r.key || '';
-    document.getElementById('xrDir_' + f.key).value = r.dir || 'after';
-    document.getElementById('xrKeyEnd_' + f.key).value = r.keyEnd || '';
-    document.getElementById('xrIdx_' + f.key).value = r.idx || '1';
-    document.getElementById('xrIdxNum_' + f.key).value = r.idxNum || 1;
-    document.getElementById('xrRange_' + f.key).value = r.range || 'word';
-    document.getElementById('xrChars_' + f.key).value = r.charsNum || 6;
-    toggleXrBetween(f.key); toggleXrIdxNum(f.key); toggleXrChars(f.key);
-  });
-}
-
-function parseDateFromText(str) {
-  if (!str) return '';
-  let m = str.match(/(20\d{2})[.\-\/년]\s?(\d{1,2})[.\-\/월]\s?(\d{1,2})/);
-  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
-  m = str.match(/(20\d{2})(\d{2})(\d{2})/);
-  if (m) return m[1] + '-' + m[2] + '-' + m[3];
-  return '';
-}
-function takeRange(str, rule, fromEnd) {
-  str = (str || '').trim();
-  if (!str) return '';
-  if (rule.range === 'line') return str;
-  if (rule.range === 'chars') {
-    const n = parseInt(rule.charsNum, 10) || 1;
-    return (fromEnd ? str.slice(-n) : str.slice(0, n)).trim();
-  }
-  const wordCountMap = { word: 1, word2: 2, word3: 3, word4: 4 };
-  const n = wordCountMap[rule.range] || 1;
-  const words = str.split(/\s+/).filter(Boolean);
-  if (!words.length) return '';
-  return (fromEnd ? words.slice(-n) : words.slice(0, n)).join(' ');
-}
-// 담당자가 설정한 규칙(rule) 하나를 텍스트(text)에 적용해 값을 추출한다.
-function extractByRule(text, rule) {
-  if (!rule || !rule.key) return '';
-  const norm = (text || '').replace(/\r/g, '');
-  const lines = norm.split('\n');
-  const occurrences = [];
-  lines.forEach((line, li) => {
-    let start = 0;
-    while (true) {
-      const idx = line.indexOf(rule.key, start);
-      if (idx < 0) break;
-      occurrences.push({ lineIdx: li, charIdx: idx });
-      start = idx + rule.key.length;
-    }
-  });
-  if (!occurrences.length) return '';
-  let chosen;
-  if (rule.idx === 'last') chosen = occurrences[occurrences.length - 1];
-  else {
-    const n = rule.idx === 'n' ? (parseInt(rule.idxNum, 10) || 1) : (parseInt(rule.idx, 10) || 1);
-    chosen = occurrences[n - 1];
-  }
-  if (!chosen) return '';
-  const line = lines[chosen.lineIdx];
-  const afterKeyIdx = chosen.charIdx + rule.key.length;
-
-  if (rule.dir === 'self') return rule.key;
-  if (rule.dir === 'nextLine') return (lines[chosen.lineIdx + 1] || '').trim();
-  if (rule.dir === 'before') return takeRange(line.slice(0, chosen.charIdx), rule, true);
-  if (rule.dir === 'between') {
-    if (!rule.keyEnd) return '';
-    const endIdx = line.indexOf(rule.keyEnd, afterKeyIdx);
-    if (endIdx < 0) return '';
-    return line.slice(afterKeyIdx, endIdx).replace(/^[:\s∙·.=]+/, '').trim();
-  }
-  return takeRange(line.slice(afterKeyIdx).replace(/^[:\s∙·.=]+/, ''), rule, false);
-}
-// 교육과정에 설정된 규칙들을 한꺼번에 적용한다. 규칙이 없는 필드는 결과에서 빠지므로(=일반 자동인식으로 대체) 호출부에서 폴백 처리한다.
-function applyExtractRules(text, extractRules) {
-  const rules = extractRules || {};
-  const out = {};
-  EXTRACT_RULE_FIELDS.forEach(f => {
-    const r = rules[f.key];
-    if (!r || !r.key) return;
-    let v = extractByRule(text, r);
-    if (f.key === 'certDate' && v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-      v = parseDateFromText(v) || parseDateFromText(text) || v;
-    }
-    if (v) out[f.key] = v;
-  });
-  return out;
-}
-
-/* PDF 첫 페이지를 이미지로 렌더링(미리보기 및 OCR 대체용) */
-async function renderPdfPageToDataUrl(file, pageNum) {
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const page = await pdf.getPage(pageNum || 1);
-  const viewport = page.getViewport({ scale: 2.0 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width; canvas.height = viewport.height;
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-  return canvas.toDataURL('image/png');
-}
-/* PDF에 실제로 담긴 글자(텍스트 레이어)를 그대로 추출한다. 대부분의 공식 이수증 PDF는 이미지가 아니라
-   실제 글자로 만들어져 있어서, 이 방식이 이미지로 바꿔 OCR을 돌리는 것보다 훨씬 빠르고 정확하다. */
-async function extractPdfTextLayer(file) {
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  let fullText = '';
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    let lastY = null, line = '';
-    content.items.forEach(item => {
-      const y = Math.round(item.transform[5]);
-      if (lastY !== null && Math.abs(y - lastY) > 2) {
-        fullText += line.trim() + '\n';
-        line = '';
-      }
-      line += item.str + ' ';
-      lastY = y;
-    });
-    if (line.trim()) fullText += line.trim() + '\n';
-  }
-  return fullText.trim();
-}
-
-/* 파일(이미지/PDF) 하나에서 텍스트를 얻어 반환한다. 개별 제출 모달과 부서 일괄 업로드가 함께 쓰는 공용 함수.
-   PDF는 우선 실제 글자(텍스트 레이어) 추출을 시도하고, 글자가 거의 없는(스캔 이미지형) PDF일 때만
-   기존처럼 이미지로 변환 후 OCR(Tesseract)을 돌린다. */
-async function ocrExtractFromFile(file, onProgress) {
-  if (file.type === 'application/pdf') {
-    if (onProgress) onProgress('PDF에 담긴 글자를 직접 확인하는 중...');
-    try {
-      const pdfText = await extractPdfTextLayer(file);
-      if (pdfText && pdfText.replace(/\s/g, '').length >= 10) {
-        const imageSource = await renderPdfPageToDataUrl(file, 1);
-        return { imageSource, text: pdfText, guess: guessCertFields(pdfText) };
-      }
-    } catch (e) {
-      console.warn('PDF 텍스트 레이어 추출 실패 - 이미지로 변환 후 OCR로 재시도합니다.', e);
-    }
-  }
-
-  let imageSource;
-  if (file.type === 'application/pdf') {
-    if (onProgress) onProgress('텍스트가 없는(스캔 이미지형) PDF로 보여 이미지로 변환 중...');
-    imageSource = await renderPdfPageToDataUrl(file, 1);
-  } else {
-    imageSource = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  if (onProgress) onProgress('이수증 내용을 인식하는 중입니다... (수 초~수십 초 소요될 수 있습니다)');
-  const result = await Tesseract.recognize(imageSource, 'kor+eng', {
-    logger: m => { if (onProgress && m.status === 'recognizing text') onProgress(`이수증 내용을 인식하는 중입니다... ${Math.round((m.progress||0)*100)}%`); }
-  });
-  const text = result.data.text || '';
-  return { imageSource, text, guess: guessCertFields(text) };
-}
-
-function guessCertFields(text) {
-  const norm = text.replace(/\r/g, '');
-  const lines = norm.split('\n').map(l => l.trim()).filter(Boolean);
-
-  function restOfLineAfterLabel(line, label) {
-    const idx = line.indexOf(label);
-    if (idx < 0) return '';
-    return line.slice(idx + label.length).replace(/^[:\s∙·.=]+/, '').trim();
-  }
-  function findAfterLabel(labels) {
-    for (const line of lines) {
-      for (const label of labels) {
-        const v = restOfLineAfterLabel(line, label);
-        if (v) return v;
-      }
-    }
-    return '';
-  }
-  function findLineIndex(labels) {
-    for (let i = 0; i < lines.length; i++) {
-      for (const label of labels) {
-        if (lines[i].indexOf(label) >= 0) return { idx: i, label };
-      }
-    }
-    return null;
-  }
-
-  // 1) 이수증 번호: 실물 이수증 맨 상단에 "제 00000호" 형식으로 적혀있는 경우가 많다.
-  let certNumber = '';
-  const numberPattern = /제\s*([0-9A-Za-z가-힣\-]{1,20}?)\s*호/;
-  for (const line of lines.slice(0, 8)) {
-    const m = line.match(numberPattern);
-    if (m) { certNumber = '제 ' + m[1] + '호'; break; }
-  }
-  if (!certNumber) {
-    for (const line of lines) {
-      const m = line.match(numberPattern);
-      if (m) { certNumber = '제 ' + m[1] + '호'; break; }
-    }
-  }
-  if (!certNumber) certNumber = findAfterLabel(['이수번호','수료번호','이수증번호','발급번호','No.','No','NO.']);
-
-  // 2) 이름: "성명" 또는 "이름" 뒤에 오는 단어
-  const nameHit = findLineIndex(['성명','이름']);
-  let certPersonName = '';
-  if (nameHit) {
-    const rest = restOfLineAfterLabel(lines[nameHit.idx], nameHit.label);
-    const m = rest.match(/[가-힣]{2,5}/);
-    certPersonName = m ? m[0] : (rest.split(/\s+/)[0] || '');
-  }
-
-  // 3) 이수과정명: "과정명/과정/강좌명/강좌" 뒤에 오는 문장
-  const courseNameGuess = findAfterLabel(['과정명', '강좌명', '과정', '강좌']);
-
-  // 4) 교육시간: "상시학습인정시간" 또는 "학습시간" 뒤에 오는 단어 (교육과정 자체의 고정 시간과 대조용)
-  const hoursHit = findLineIndex(['상시학습인정시간', '학습시간']);
-  let hoursGuess = '';
-  if (hoursHit) {
-    const rest = restOfLineAfterLabel(lines[hoursHit.idx], hoursHit.label);
-    const m = rest.match(/[0-9]+(?:\.[0-9]+)?\s*시간/) || rest.match(/[0-9]+(?:\.[0-9]+)?/);
-    hoursGuess = m ? m[0].replace(/\s+/g, '') : (rest.split(/\s+/)[0] || '');
-  }
-
-  // 5) 이수일자: 연도(20xx)가 들어있는 줄에서 날짜를 추출
-  let certDate = '';
-  for (const line of lines) {
-    if (!/20\d{2}/.test(line)) continue;
-    let m = line.match(/(20\d{2})[.\-\/년]\s?(\d{1,2})[.\-\/월]\s?(\d{1,2})/);
-    if (m) { certDate = m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0'); break; }
-    m = line.match(/(20\d{2})(\d{2})(\d{2})/);
-    if (m) { certDate = m[1] + '-' + m[2] + '-' + m[3]; break; }
-  }
-
-  // 6) 이수기관: 이름이 적힌 줄 바로 다음 줄
-  let certOrg = '';
-  if (nameHit && lines[nameHit.idx + 1]) certOrg = lines[nameHit.idx + 1].trim();
-  if (!certOrg) certOrg = findAfterLabel(['발급기관', '교육기관', '이수기관', '운영기관', '주관기관']);
-
-  // 이수증 안에 부서 명단의 이름이 그대로 적혀 있는 경우, 일괄 업로드에서 담당 직원을 미리 추정하는 데 쓴다.
-  let guessedName = '';
-  if (certPersonName) {
-    const exact = (state.deptRoster || []).find(p => p.name === certPersonName);
-    if (exact) guessedName = exact.name;
-  }
-  if (!guessedName) {
-    let guessedLen = 0;
-    (state.deptRoster || []).forEach(p => {
-      if (p.name && p.name.length >= 2 && norm.indexOf(p.name) >= 0 && p.name.length > guessedLen) {
-        guessedName = p.name; guessedLen = p.name.length;
-      }
-    });
-  }
-  if (!guessedName) guessedName = certPersonName;
-
-  return { certNumber, certOrg, certDate, guessedName, courseNameGuess, hoursGuess, personName: certPersonName };
-}
-
-async function handleCertFileSelected() {
-  const file = document.getElementById('certFile').files[0];
-  if (!file) return;
-  const progressEl = document.getElementById('ocrProgress');
-  const previewImg = document.getElementById('certPreviewImg');
-  progressEl.classList.remove('hidden');
-  progressEl.textContent = '파일을 불러오는 중...';
-
-  try {
-    const { imageSource, text, guess } = await ocrExtractFromFile(file, msg => { progressEl.textContent = msg; });
-    previewImg.src = imageSource;
-    previewImg.classList.remove('hidden');
-    // 담당자가 이 교육과정에 "이수증 PDF 자동인식 규칙"을 설정해두었으면 그 규칙을 먼저 적용하고,
-    // 설정하지 않은 필드는 일반 라벨 기반 자동인식(guess) 값으로 채운다.
-    const course = (state.employeeCourseCache || {})[state.certContext.courseId] || {};
-    const custom = applyExtractRules(text, course.extractRules);
-    document.getElementById('certNumber').value = custom.certNumber || guess.certNumber;
-    document.getElementById('certOrg').value = custom.certOrg || guess.certOrg;
-    document.getElementById('certDate').value = custom.certDate || guess.certDate;
-    // 이 교육과정에 등록된 "인정 교육과정명" 중 이수증 텍스트에 그대로 적힌 것이 있으면 그걸로 맞춰주고,
-    // 없으면 사전설정 규칙 또는 "과정/강좌명" 뒤에 적힌 문장으로라도 채워준다.
-    const matched = (course.curriculumNames || []).find(n => n && text.indexOf(n) >= 0);
-    if (matched) document.getElementById('certCourseNameInput').value = matched;
-    else if (custom.courseName) document.getElementById('certCourseNameInput').value = custom.courseName;
-    else if (guess.courseNameGuess) document.getElementById('certCourseNameInput').value = guess.courseNameGuess;
-    progressEl.classList.add('hidden');
-    document.getElementById('certFormWrap').classList.remove('hidden');
-  } catch (e) {
-    console.error(e);
-    progressEl.textContent = '자동 인식에 실패했습니다. 아래에서 직접 입력해주세요.';
-    document.getElementById('certFormWrap').classList.remove('hidden');
-  }
-  // 원본 파일 객체는 폼에 채워 넣는 용도로만 잠시 쓰이고, 저장 시에도 업로드되지 않음(브라우저 메모리에서만 처리)
-}
-
 async function saveCertRecord() {
   if (!state.certContext) return;
+  const course = (state.employeeCourseCache || {})[state.certContext.courseId] || {};
+  const sites = course.sites || [];
+  const curriculumNames = course.curriculumNames || [];
+  const certOrgs = course.certOrgs || [];
+  const site = sites.length > 1 ? document.getElementById('certSiteSelect').value : (sites[0] || '');
+  const courseName = curriculumNames.length > 1 ? document.getElementById('certCourseNameSelect').value : (curriculumNames[0] || course.name || '');
+  const certOrg = certOrgs.length > 1 ? document.getElementById('certOrgSelect').value : (certOrgs[0] || '');
+  const certDate = document.getElementById('certDate').value;
+  if (!certDate) return alert('이수일자를 선택해주세요.');
+  const certNumber = document.getElementById('certNumber').value.trim();
+  if (course.certRequired && !certNumber) return alert('이 교육과정은 이수증번호 입력이 필수입니다.');
+
   const orgRef = db.collection('institutions').doc(state.orgId);
   const entry = { employeeCode: state.employeeCode || '', deptName: state.deptName, team: state.employeeTeam || '', name: state.employeeName };
   const recRef = orgRef.collection('records').doc(recordDocId(state.certContext.courseId, entry));
 
   const payload = {
     courseId: state.certContext.courseId,
-    courseName: document.getElementById('certCourseNameInput').value.trim(),
+    courseName,
+    site,
     employeeUid: state.uid,
     deptId: state.deptId, deptName: state.deptName, team: state.employeeTeam || '',
     employeeName: state.employeeName, employeeCode: state.employeeCode || '',
-    certNumber: document.getElementById('certNumber').value.trim(),
-    certOrg: document.getElementById('certOrg').value.trim(),
-    certDate: document.getElementById('certDate').value,
+    certOrg,
+    certNumber,
+    certDate,
     submittedByUid: state.uid, submittedByName: state.employeeName, submittedByRole: 'self',
     submittedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
@@ -1763,7 +1381,6 @@ async function saveCertRecord() {
   closeCertModal();
   loadEmployeeCourses();
 }
-
 switchLoginTab('super');
 completeSuperAdminEmailLink();
 </script>
