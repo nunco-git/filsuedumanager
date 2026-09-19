@@ -149,7 +149,7 @@
 
       <div class="section-heading">전체 교육과정 · 제출 기록</div>
       <p class="section-sub">제출된 기록은 누구도 수정할 수 없고, 총괄관리자만 사유를 남기고 삭제(정정)할 수 있습니다. 실제 삭제를 눌러 이 원칙을 체험해보세요.</p>
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>담당자</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>제출 인원</th><th></th></tr></thead><tbody id="superCourseTable"></tbody></table></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>담당자</th><th>이수 사이트</th><th>교육과정명</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>제출 인원</th><th></th></tr></thead><tbody id="superCourseTable"></tbody></table></div>
     </div>
 
     <!-- =================== 담당자 =================== -->
@@ -160,7 +160,7 @@
       </div>
 
       <div class="section-heading">교육과정 등록·관리 <button class="btn btn-sm" style="width:auto;" onclick="openCourseModal()">+ 새 교육과정</button></div>
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>이수증필요</th><th></th></tr></thead><tbody id="managerCourseTable"></tbody></table></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>의무교육 명칭</th><th>이수 사이트</th><th>교육과정명</th><th>교육시간</th><th>이수기한</th><th>대상</th><th>이수증필요</th><th></th></tr></thead><tbody id="managerCourseTable"></tbody></table></div>
 
       <div class="section-heading">이수현황 다운로드 <span style="font-weight:normal; font-size:12px; color:#94a3b8;">- 실제 엑셀 파일이 다운로드됩니다</span></div>
       <div class="card-box">
@@ -398,10 +398,12 @@ function renderSuperView() {
   courseTbody.innerHTML = DB.courses.map(c => {
     const mgr = DB.managers.find(m => m.id === c.managerId);
     const cnt = DB.records.filter(r => r.courseId === c.id).length;
-    return `<tr><td>${escHtml(c.name)}</td><td>${escHtml(mgr ? mgr.name : '-')}</td><td>${escHtml(c.hours||'')}</td><td>${escHtml(c.deadline)}</td>
+    const sitesHtml = (c.sites||[]).map(s => `<a href="${escHtml(s)}" target="_blank" rel="noopener">${escHtml(s)}</a>`).join('<br/>') || '-';
+    const curriculumHtml = (c.curriculumNames||[]).map(escHtml).join('<br/>') || '-';
+    return `<tr><td>${escHtml(c.name)}</td><td>${escHtml(mgr ? mgr.name : '-')}</td><td>${sitesHtml}</td><td>${curriculumHtml}</td><td>${escHtml(c.hours||'')}</td><td>${escHtml(c.deadline)}</td>
       <td>${targetLabel[c.target]||c.target}</td><td>${cnt}명</td>
       <td><button class="btn btn-sm" onclick="openRecordsModal('${c.id}')">기록보기</button></td></tr>`;
-  }).join('') || '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">등록된 교육과정이 없습니다.</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="text-align:center; color:#94a3b8;">등록된 교육과정이 없습니다.</td></tr>';
 }
 
 function demoAddDept() {
@@ -475,11 +477,14 @@ function renderManagerView() {
   refreshManagerSelect();
   const myCourses = DB.courses.filter(c => c.managerId === currentManagerId);
   const targetLabel = { all: '전직원', government: '공무원만' };
-  document.getElementById('managerCourseTable').innerHTML = myCourses.map(c => `
-    <tr><td>${escHtml(c.name)}</td><td>${escHtml(c.hours||'')}</td><td>${escHtml(c.deadline)}</td><td>${targetLabel[c.target]||c.target}</td>
+  document.getElementById('managerCourseTable').innerHTML = myCourses.map(c => {
+    const sitesHtml = (c.sites||[]).map(s => `<a href="${escHtml(s)}" target="_blank" rel="noopener">${escHtml(s)}</a>`).join('<br/>') || '-';
+    const curriculumHtml = (c.curriculumNames||[]).map(escHtml).join('<br/>') || '-';
+    return `<tr><td>${escHtml(c.name)}</td><td>${sitesHtml}</td><td>${curriculumHtml}</td><td>${escHtml(c.hours||'')}</td><td>${escHtml(c.deadline)}</td><td>${targetLabel[c.target]||c.target}</td>
     <td>${c.certRequired ? '필요' : '불필요'}</td>
-    <td><button class="btn btn-sm" onclick="openCourseModal('${c.id}')">수정</button></td></tr>`).join('')
-    || '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">등록한 교육과정이 없습니다. 위 버튼으로 추가해보세요.</td></tr>';
+    <td><button class="btn btn-sm" onclick="openCourseModal('${c.id}')">수정</button></td></tr>`;
+  }).join('')
+    || '<tr><td colspan="8" style="text-align:center; color:#94a3b8;">등록한 교육과정이 없습니다. 위 버튼으로 추가해보세요.</td></tr>';
 
   const sel = document.getElementById('managerDownloadCourse');
   sel.innerHTML = myCourses.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
@@ -632,12 +637,14 @@ function renderEmpCourseList() {
   const applicable = DB.courses.filter(c => !(c.target === 'government' && currentEmployee.employeeType !== '공무원'));
   list.innerHTML = applicable.map(c => {
     const rec = DB.records.find(r => r.courseId === c.id && employeeMatchKey({ employeeCode: r.employeeCode, deptName: r.deptName, team: r.team, name: r.employeeName }) === ownKey);
+    const sitesHtml = (c.sites||[]).map(s => `<a href="${escHtml(s)}" target="_blank" rel="noopener">${escHtml(s)}</a>`).join('<br/>');
     return `<div class="card-box">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
         <div>
           <strong>${escHtml(c.name)}</strong>
           <div style="font-size:12px; color:#64748b; margin-top:4px;">교육시간: ${escHtml(c.hours||'-')} · 이수기한: ${escHtml(c.deadline)} · 대상: ${c.target==='government'?'공무원':'전직원'}</div>
           ${(c.curriculumNames||[]).length ? `<div style="font-size:12px; color:#94a3b8; margin-top:4px;">인정 과정명: ${(c.curriculumNames||[]).map(escHtml).join(', ')}</div>` : ''}
+          ${sitesHtml ? '<div style="font-size:12px; margin-top:4px;">이수 사이트: '+sitesHtml+'</div>' : ''}
           ${rec ? `<div style="font-size:12px; color:#64748b; margin-top:6px;">제출됨 - ${escHtml(rec.courseName||'')} / ${escHtml(rec.certOrg||'')} / ${escHtml(rec.certDate||'')} ${rec.submittedByRole==='proxy' ? '(서무 대리제출: '+escHtml(rec.submittedByName)+')' : ''}</div>` : ''}
         </div>
         <div style="text-align:right;">
