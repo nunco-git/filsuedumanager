@@ -308,8 +308,8 @@ function seedDB() {
   return {
     org: { name: '테스트기관(예시)', type: 'government' },
     departments: [
-      { id: 'd1', name: '총무과', password: 'TEST1234' },
-      { id: 'd2', name: '복지정책과', password: 'TEST5678' }
+      { id: 'd1', name: '총무과', password: genDeptPassword('총무과') },
+      { id: 'd2', name: '복지정책과', password: genDeptPassword('복지정책과') }
     ],
     roster: [
       { deptId: 'd1', deptName: '총무과', team: '인사팀', name: '홍길동', employeeCode: '10001', employeeType: '공무원' },
@@ -364,10 +364,46 @@ function switchRole(role) {
 function escHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function randPassword(len) {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let s = ''; for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random()*chars.length)];
-  return s;
+/* 한글 음절을 두벌식 자판 기준 영문 키 입력값으로 변환 (예: "부여" -> "qngo") */
+function hangulToKeystrokes(str) {
+  const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+  const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  const KEY = {
+    'ㅂ':'q','ㅈ':'w','ㄷ':'e','ㄱ':'r','ㅅ':'t','ㅛ':'y','ㅕ':'u','ㅑ':'i','ㅐ':'o','ㅔ':'p',
+    'ㅁ':'a','ㄴ':'s','ㅇ':'d','ㄹ':'f','ㅎ':'g','ㅗ':'h','ㅓ':'j','ㅏ':'k','ㅣ':'l',
+    'ㅋ':'z','ㅌ':'x','ㅊ':'c','ㅍ':'v','ㅠ':'b','ㅜ':'n','ㅡ':'m',
+    'ㅃ':'Q','ㅉ':'W','ㄸ':'E','ㄲ':'R','ㅆ':'T','ㅒ':'O','ㅖ':'P'
+  };
+  const COMPOUND_JUNG = { 'ㅘ':'hk','ㅙ':'ho','ㅚ':'hl','ㅝ':'nj','ㅞ':'np','ㅟ':'nl','ㅢ':'ml' };
+  const COMPOUND_JONG = { 'ㄳ':'rt','ㄵ':'sw','ㄶ':'sg','ㄺ':'fr','ㄻ':'fa','ㄼ':'fq','ㄽ':'ft','ㄾ':'fx','ㄿ':'fv','ㅀ':'fg','ㅄ':'qt' };
+  let out = '';
+  for (const ch of str) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7A3) {
+      const sIndex = code - 0xAC00;
+      const cho = CHO[Math.floor(sIndex / (21 * 28))];
+      const jung = JUNG[Math.floor((sIndex % (21 * 28)) / 28)];
+      const jong = JONG[sIndex % 28];
+      out += KEY[cho] || '';
+      out += COMPOUND_JUNG[jung] || KEY[jung] || '';
+      if (jong) out += COMPOUND_JONG[jong] || KEY[jong] || '';
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+/* 부서 접속 비밀번호 자동 발급: 부서명 앞 2글자(두벌식 영타 표기) + 숫자 4자리 무작위 + 특수문자 2개 무작위 */
+function genDeptPassword(deptName) {
+  const base = hangulToKeystrokes((deptName || '').trim().slice(0, 2));
+  const digits = '0123456789';
+  const specials = '!@#$';
+  let numPart = '';
+  for (let i = 0; i < 4; i++) numPart += digits[Math.floor(Math.random() * digits.length)];
+  let specPart = '';
+  for (let i = 0; i < 2; i++) specPart += specials[Math.floor(Math.random() * specials.length)];
+  return base + numPart + specPart;
 }
 function employeeMatchKey({ employeeCode, deptName, team, name }) {
   return employeeCode ? 'c_' + employeeCode.trim() : 'n_' + (deptName||'') + '_' + (team||'') + '_' + (name||'');
@@ -415,7 +451,7 @@ function demoAddDept() {
   const name = input.value.trim();
   if (!name) return alert('부서명을 입력해주세요.');
   if (DB.departments.some(d => d.name === name)) return alert('이미 있는 부서명입니다.');
-  DB.departments.push({ id: 'd' + Date.now(), name, password: randPassword(8) });
+  DB.departments.push({ id: 'd' + Date.now(), name, password: genDeptPassword(name) });
   input.value = '';
   renderSuperView();
   refreshEmployeeDeptSelects();
@@ -423,7 +459,7 @@ function demoAddDept() {
 function demoRegenDeptPw(id) {
   const d = DB.departments.find(x => x.id === id);
   if (!d) return;
-  d.password = randPassword(8);
+  d.password = genDeptPassword(d.name);
   renderSuperView();
 }
 function demoAddManager() {
