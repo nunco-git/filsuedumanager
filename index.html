@@ -264,6 +264,15 @@
         </button>
       </div>
 
+      <div id="empSubmitPwStep" class="hidden" style="margin-top:16px;">
+        <div class="status-banner ok">부서 확인 완료. 이 기관은 Google 로그인을 사용하지 않습니다. 본인 확인을 위해 제출 비밀번호를 입력해주세요. (부서 서무 담당자에게 문의)</div>
+        <div class="form-group">
+          <label>제출 비밀번호</label>
+          <input type="password" id="empSubmitPwInput" />
+        </div>
+        <button type="button" class="btn" onclick="verifyEmployeeSubmitPassword()">확인</button>
+      </div>
+
       <div id="empRegisterStep" class="hidden" style="margin-top:16px;">
         <div class="status-banner info">인사발령으로 부서가 바뀌었다면 아래 정보를 새로 확인해주세요.</div>
         <div class="form-group"><label>팀(선택)</label><input type="text" id="regTeam" /></div>
@@ -316,6 +325,17 @@
       <div class="right"><button class="btn btn-secondary btn-sm" onclick="logout()">로그아웃</button></div>
     </div>
 
+    <div class="section-heading">직원 접속 방식 설정</div>
+    <div class="card-box">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="saGoogleLoginToggle" onchange="toggleGoogleLoginSetting()" style="width:auto;" checked />
+        직원 접속 시 Google 로그인 사용
+      </label>
+      <p class="form-hint" style="margin-top:6px;">
+        사회복지시설 등 구글 로그인이 어려운 곳은 꺼주세요. 끄면 직원은 Google 로그인 없이, 부서 접속 비밀번호 확인 후 <strong>부서별 제출 비밀번호</strong>를 한 번 더 입력해 본인확인을 대신합니다(아래 부서 표에 표시됩니다).
+      </p>
+    </div>
+
     <div class="section-heading">부서 · 직원명단 엑셀 업로드</div>
     <p class="section-sub">
       1행은 머리글로 두고, <strong>"기관명"</strong>과 <strong>"부서명"</strong> 열은 반드시 포함해주세요(이 두 열만 있어도 부서 등록은 가능합니다). 가능하면 <strong>"팀명"·"이름"·"고유번호"(사번 등)·"구분"(공무원/기타)</strong> 열도 함께 채워서 올리면 전체 직원명단까지 한 번에 반영됩니다.
@@ -333,7 +353,7 @@
         <button class="btn btn-sm" style="flex:0 0 auto;" onclick="addDepartment()">추가</button>
       </div>
     </div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서명</th><th>명단 인원</th><th>접속(등록) 인원</th><th>접속 비밀번호</th><th></th></tr></thead><tbody id="deptPwTable"></tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>부서명</th><th>명단 인원</th><th>접속(등록) 인원</th><th>접속 비밀번호</th><th id="deptSubmitPwHeader" class="hidden">제출 비밀번호</th><th></th></tr></thead><tbody id="deptPwTable"></tbody></table></div>
 
     <div class="section-heading">의무교육 담당자 계정 관리</div>
     <p class="section-sub">담당자의 실제 Google 이메일을 등록해두면, 담당자가 그 계정으로 로그인할 때 인증됩니다. 담당자는 로그인 후 본인이 맡을 교육과정을 직접 등록·수정합니다.</p>
@@ -543,7 +563,9 @@ const state = {
   employeeCourseCache: {}, // 직원 화면에서 courseId -> 교육과정 전체 데이터
   deptRoster: [], deptRecords: [],
   certContext: null,       // { courseId, courseName }
-  mgrStatusUnsub: null      // 부서별 실시간 이수현황 리스너 해제 함수
+  mgrStatusUnsub: null,     // 부서별 실시간 이수현황 리스너 해제 함수
+  orgGoogleLoginRequired: true,  // 총괄관리자가 끌 수 있는 직원 Google 로그인 사용 여부
+  deptSubmitPassword: null       // Google 로그인 미사용 시 본인확인용 제출 비밀번호
 };
 
 function openDemoOverlay() {
@@ -577,7 +599,10 @@ function logout() {
   if (state.mgrStatusUnsub) { state.mgrStatusUnsub(); state.mgrStatusUnsub = null; }
   state.role = null; state.orgId = null; state.managerId = null; state.deptId = null; state.uid = null; state.employeeName = null;
   document.getElementById('formEmployeeAccess').reset();
+  document.getElementById('empDeptSubmitBtn').disabled = false;
   document.getElementById('empGoogleStep').classList.add('hidden');
+  document.getElementById('empSubmitPwStep').classList.add('hidden');
+  document.getElementById('empSubmitPwInput').value = '';
   document.getElementById('empRegisterStep').classList.add('hidden');
   document.getElementById('panelCreateOrg').classList.add('hidden');
   document.getElementById('panelSuper').classList.remove('hidden');
@@ -631,6 +656,16 @@ function genDeptPassword(deptName) {
   let specPart = '';
   for (let i = 0; i < 2; i++) specPart += specials[Math.floor(Math.random() * specials.length)];
   return base + numPart + specPart;
+}
+// Google 로그인을 쓰지 않는 부서에서, 부서 접속 비밀번호와 별도로 개인 제출 시 한 번 더 확인하는 비밀번호
+function genSubmitPassword() {
+  const digits = '0123456789';
+  const specials = '!@#$';
+  let numPart = '';
+  for (let i = 0; i < 4; i++) numPart += digits[Math.floor(Math.random() * digits.length)];
+  let specPart = '';
+  for (let i = 0; i < 2; i++) specPart += specials[Math.floor(Math.random() * specials.length)];
+  return numPart + specPart;
 }
 function escHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -745,6 +780,7 @@ async function afterSuperAdminAuthenticated(user) {
   } else {
     const doc = snap.docs[0];
     state.orgId = doc.id; state.orgName = doc.data().name; state.orgType = doc.data().type;
+    state.orgGoogleLoginRequired = doc.data().googleLoginRequired !== false;
     state.role = 'super';
     loadSuperAdminDashboard();
   }
@@ -757,19 +793,27 @@ async function handleCreateOrg(e) {
   const name = document.getElementById('newOrgName').value.trim();
   const type = document.getElementById('newOrgType').value;
   const ref = await db.collection('institutions').add({
-    name, type, adminUid: user.uid, adminEmail: user.email, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    name, type, adminUid: user.uid, adminEmail: user.email, googleLoginRequired: true, createdAt: firebase.firestore.FieldValue.serverTimestamp()
   });
-  state.orgId = ref.id; state.orgName = name; state.orgType = type; state.role = 'super';
+  state.orgId = ref.id; state.orgName = name; state.orgType = type; state.orgGoogleLoginRequired = true; state.role = 'super';
   loadSuperAdminDashboard();
 }
 
 async function loadSuperAdminDashboard() {
   document.getElementById('saOrgLabel').textContent = state.orgName + (state.orgType === 'government' ? ' (공무원 소속 기관)' : ' (기타 기관)');
   document.getElementById('saUserEmail').textContent = auth.currentUser ? auth.currentUser.email : '';
+  document.getElementById('saGoogleLoginToggle').checked = state.orgGoogleLoginRequired !== false;
   showView('viewSuperAdmin');
   await refreshDeptPasswordTable();
   await refreshManagerTable();
   await refreshSuperAdminCourseTable();
+}
+
+async function toggleGoogleLoginSetting() {
+  const checked = document.getElementById('saGoogleLoginToggle').checked;
+  await db.collection('institutions').doc(state.orgId).update({ googleLoginRequired: checked });
+  state.orgGoogleLoginRequired = checked;
+  refreshDeptPasswordTable();
 }
 
 async function refreshDeptPasswordTable() {
@@ -780,14 +824,19 @@ async function refreshDeptPasswordTable() {
   const rosterCounts = {}; rosterSnap.forEach(d => { const dep = d.data().deptId; rosterCounts[dep] = (rosterCounts[dep]||0)+1; });
   const empCounts = {}; empSnap.forEach(d => { const dep = d.data().deptId; empCounts[dep] = (empCounts[dep]||0)+1; });
   const tbody = document.getElementById('deptPwTable');
+  const useSubmitPw = state.orgGoogleLoginRequired === false;
+  document.getElementById('deptSubmitPwHeader').classList.toggle('hidden', !useSubmitPw);
   tbody.innerHTML = '';
   deptSnap.forEach(d => {
     const v = d.data();
-    tbody.innerHTML += `<tr><td>${escHtml(v.name)}</td><td>${rosterCounts[d.id]||0}명</td><td>${empCounts[d.id]||0}명</td><td><code>${escHtml(v.password)}</code></td>
+    const submitPwCell = useSubmitPw
+      ? `<td><code>${escHtml(v.submitPassword || '-')}</code> <button class="btn btn-sm btn-secondary" onclick="regenSubmitPassword('${d.id}')">재발급</button></td>`
+      : '';
+    tbody.innerHTML += `<tr><td>${escHtml(v.name)}</td><td>${rosterCounts[d.id]||0}명</td><td>${empCounts[d.id]||0}명</td><td><code>${escHtml(v.password)}</code></td>${submitPwCell}
       <td><button class="btn btn-sm btn-secondary" onclick="regenDeptPassword('${d.id}')">재발급</button>
       <button class="btn btn-sm btn-danger" onclick="deleteDepartment('${d.id}')">삭제</button></td></tr>`;
   });
-  if (deptSnap.empty) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">등록된 부서가 없습니다.</td></tr>';
+  if (deptSnap.empty) tbody.innerHTML = `<tr><td colspan="${useSubmitPw ? 6 : 5}" style="text-align:center; color:#94a3b8;">등록된 부서가 없습니다.</td></tr>`;
 }
 
 function sanitizeDocId(raw) {
@@ -864,7 +913,7 @@ async function uploadRoster() {
       if (!deptByName[dn]) {
         const ref = orgRef.collection('departments').doc();
         deptByName[dn] = ref.id;
-        batch.set(ref, { name: dn, password: genDeptPassword(dn) });
+        batch.set(ref, { name: dn, password: genDeptPassword(dn), submitPassword: genSubmitPassword() });
         newDeptCount++;
         opCount++;
         if (opCount >= 400) { await batch.commit(); batch = db.batch(); opCount = 0; }
@@ -904,6 +953,13 @@ async function regenDeptPassword(deptId) {
   refreshDeptPasswordTable();
 }
 
+async function regenSubmitPassword(deptId) {
+  if (!confirm('제출 비밀번호를 재발급하면 기존 비밀번호는 더 이상 사용할 수 없습니다. 계속할까요?')) return;
+  const deptRef = db.collection('institutions').doc(state.orgId).collection('departments').doc(deptId);
+  await deptRef.update({ submitPassword: genSubmitPassword() });
+  refreshDeptPasswordTable();
+}
+
 async function addDepartment() {
   const nameInput = document.getElementById('newDeptName');
   const name = nameInput.value.trim();
@@ -911,7 +967,7 @@ async function addDepartment() {
   const orgRef = db.collection('institutions').doc(state.orgId);
   const dup = await orgRef.collection('departments').where('name', '==', name).limit(1).get();
   if (!dup.empty) return alert('이미 등록된 부서명입니다.');
-  await orgRef.collection('departments').add({ name, password: genDeptPassword(name) });
+  await orgRef.collection('departments').add({ name, password: genDeptPassword(name), submitPassword: genSubmitPassword() });
   nameInput.value = '';
   refreshDeptPasswordTable();
 }
@@ -1266,9 +1322,32 @@ async function handleEmployeeDeptLogin(e) {
 
   state.orgId = orgDoc.id; state.orgName = orgDoc.data().name; state.orgType = orgDoc.data().type;
   state.deptId = deptSnap.docs[0].id; state.deptName = deptName;
+  state.deptSubmitPassword = deptSnap.docs[0].data().submitPassword || '';
 
   document.getElementById('empDeptSubmitBtn').disabled = true;
-  document.getElementById('empGoogleStep').classList.remove('hidden');
+  if (orgDoc.data().googleLoginRequired === false) {
+    document.getElementById('empSubmitPwStep').classList.remove('hidden');
+  } else {
+    document.getElementById('empGoogleStep').classList.remove('hidden');
+  }
+}
+
+async function verifyEmployeeSubmitPassword() {
+  const pw = document.getElementById('empSubmitPwInput').value;
+  if (!pw || pw !== state.deptSubmitPassword) return alert('제출 비밀번호가 올바르지 않습니다.');
+  if (!auth) return alert('Firebase 설정을 먼저 완료해주세요.');
+  try {
+    const result = await auth.signInAnonymously();
+    state.uid = result.user.uid;
+    document.getElementById('empSubmitPwStep').classList.add('hidden');
+    document.getElementById('empRegisterStep').classList.remove('hidden');
+    document.getElementById('regTeam').value = '';
+    document.getElementById('regName').value = '';
+    document.getElementById('regEmpId').value = '';
+    document.getElementById('regEmpType').value = state.orgType === 'government' ? '공무원' : '기타';
+  } catch (err) {
+    alert('본인 확인 실패: ' + err.message);
+  }
 }
 
 async function startEmployeeGoogleLogin() {
