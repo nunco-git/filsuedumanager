@@ -10,6 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
 <!-- 이수증(PDF) 글자 추출용 -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -298,6 +299,7 @@
           <button type="button" class="btn btn-secondary" id="certBtnDel" onclick="certSheetDeleteSelected()" disabled>🗑️ 선택 파일 삭제</button>
           <button type="button" class="btn btn-excel" id="certBtnSubmit" onclick="submitCertSheet()" disabled>📤 결과 엑셀 제출</button>
         </div>
+        <p class="form-hint" style="margin:0 0 8px 2px;">글자를 바로 읽을 수 없는 PDF(이미지로 저장된 이수증 등)는 자동으로 OCR로 읽으며, 파일당 수 초~수십 초 더 걸립니다. 파일은 이 브라우저 안에서만 처리됩니다.</p>
         <div class="table-wrap"><table class="data-table"><thead id="certSheetHead"></thead><tbody id="certSheetBody"></tbody></table></div>
 
         <div class="section-heading">부서 이수결과 직접 입력 · 일괄 등록 (서무 담당자 체험)</div>
@@ -1327,6 +1329,222 @@ async function certPdfText(file) {
   return full;
 }
 
+/* =====================================================================
+   🔍 OCR (파일관리자 앱과 같은 방식) - 글자층이 없는 PDF(스캔본·이미지로 저장된 이수증)를 읽습니다.
+   1) 고해상도(긴 변 약 3500px ≈ 300dpi)로 렌더링, 투명 배경은 흰색으로 채움
+   2) 회색조+대비보정 / 이진화(Otsu) 두 가지 전처리
+   3) 3가지 조합(회색조·kor+eng·문단분석4, 회색조·kor·4, 이진화·kor·6)으로 인식 → 신뢰도가 가장 높은 결과를 기본 텍스트로,
+      나머지는 보조 텍스트로 보관(기준단어를 기본 텍스트에서 못 찾으면 보조 텍스트에서 다시 찾음)
+   4) 프리셋의 digitPos(영어·숫자 위주 인식 위치)가 있으면, 숫자·영문이 든 단어만 영어 전용 OCR로 다시 읽어 보정
+   ※ 인식에 파일당 수 초~수십 초 걸리며, 브라우저 안에서만 처리됩니다(파일이 서버로 전송되지 않습니다).
+===================================================================== */
+const CERT_OCR = {
+  targetLongSide: 3500, maxLongSide: 5000, maxPages: 3,
+  passes: [
+    { variant: 'gray', lang: 'kor+eng', psm: 4 },
+    { variant: 'gray', lang: 'kor',     psm: 4 },
+    { variant: 'bin',  lang: 'kor',     psm: 6 }
+  ]
+};
+const certOcrWorkers = {};
+function certOcrWorker(lang) {
+  if (!certOcrWorkers[lang]) certOcrWorkers[lang] = Tesseract.createWorker(lang, 1, {}).catch(e => { delete certOcrWorkers[lang]; throw e; });
+  return certOcrWorkers[lang];
+}
+async function certOcrRecognize(canvas, lang, psm) {
+  const worker = await certOcrWorker(lang);
+  await worker.setParameters({ tessedit_pageseg_mode: String(psm), preserve_interword_spaces: '1', user_defined_dpi: '300' });
+  const { data } = await worker.recognize(canvas);
+  const words = (data.words || []).map(w => ({ text: (w.text || '').trim(), symbols: (w.symbols || []).map(s => ({ text: s.text || '', bbox: s.bbox })) }));
+  return { text: data.text || '', conf: typeof data.confidence === 'number' ? data.confidence : 0, words };
+}
+function certOcrCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+function certOtsu(hist, total) {
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0, wB = 0, best = -1, thr = 128;
+  for (let i = 0; i < 256; i++) {
+    wB += hist[i]; if (!wB) continue;
+    const wF = total - wB; if (!wF) break;
+    sumB += i * hist[i];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > best) { best = v; thr = i; }
+  }
+  return thr;
+}
+function certOcrVariants(src) {
+  const w = src.width, h = src.height;
+  const d = src.getContext('2d').getImageData(0, 0, w, h).data;
+  const gray = new Uint8ClampedArray(w * h), hist = new Array(256).fill(0);
+  for (let i = 0, j = 0; j < gray.length; i += 4, j++) { const v = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0; gray[j] = v; hist[v]++; }
+  const stretched = new Uint8ClampedArray(gray.length);
+  for (let j = 0; j < gray.length; j++) stretched[j] = Math.min(255, (gray[j] * 255 / 235) | 0);
+  let thr = certOtsu(hist, gray.length); thr = Math.max(120, Math.min(200, thr));
+  function toCanvas(fn) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const ctx = c.getContext('2d'), out = ctx.createImageData(w, h), o = out.data;
+    for (let j = 0, i = 0; j < gray.length; j++, i += 4) { const v = fn(j); o[i] = o[i + 1] = o[i + 2] = v; o[i + 3] = 255; }
+    ctx.putImageData(out, 0, 0); return c;
+  }
+  return { gray: toCanvas(j => stretched[j]), bin: toCanvas(j => (gray[j] > thr ? 255 : 0)) };
+}
+function certOcrNormalize(t) {
+  return String(t || '').replace(/[：﹕∶꞉]/g, ':').replace(/:{2,}/g, ':').replace(/:\s*[ㆍ·•]+\s*/g, ': ')
+    .replace(/[ \t]*_+[ \t]*/g, ' ').replace(/[ \t]{2,}/g, '  ');
+}
+
+/* 영어·숫자 위주 재인식: 한글 OCR이 읽은 단어 중 숫자/영문이 든 부분만 잘라 영어 전용 OCR로 다시 읽고, 신뢰할 수 있을 때만 바꿔 넣는다. */
+const CERT_DIGIT_WHITELIST = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-~:/+';
+const CERT_HANGUL_SYL = /[가-힣]/;
+function certReconcileDigitToken(a, b) {
+  if (!a || !b) return null;
+  const n = a.length, m = b.length, dp = [];
+  for (let i = 0; i <= n; i++) { dp.push(new Array(m + 1).fill(0)); dp[i][0] = i; }
+  for (let j = 0; j <= m; j++) dp[0][j] = j;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+    dp[i][j] = Math.min(dp[i - 1][j - 1] + cost, dp[i - 1][j] + 1, dp[i][j - 1] + 1);
+  }
+  const ops = []; let i = n, j = m;
+  while (i > 0 || j > 0) {
+    if (j > 0 && dp[i][j] === dp[i][j - 1] + 1) { ops.push('I'); j--; }
+    else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) { ops.push(a[i - 1] === b[j - 1] ? 'M' : 'S'); i--; j--; }
+    else { ops.push('D'); i--; }
+  }
+  ops.reverse();
+  let first = 0, last = ops.length - 1;
+  while (first < ops.length && ops[first] === 'I') first++;
+  while (last >= 0 && ops[last] === 'I') last--;
+  let out = '', bi = 0, matches = 0;
+  for (let k = 0; k < ops.length; k++) {
+    const op = ops[k]; if (op === 'D') continue;
+    const ch = b[bi++];
+    if (op === 'I' && (k < first || k > last)) continue;
+    if (op === 'M') matches++;
+    out += ch;
+  }
+  if (!out) return null;
+  if (matches / Math.max(a.length, out.length) < 0.4) return null;
+  return out;
+}
+async function certRefineWordWithEnglish(word, grayCanvas) {
+  const syms = word.symbols || [], text = word.text;
+  if (!text || syms.length === 0 || !/[0-9A-Za-z]/.test(text)) return null;
+  const idxs = []; syms.forEach((s, k) => { if (!CERT_HANGUL_SYL.test(s.text) && s.bbox) idxs.push(k); });
+  if (idxs.length === 0) return null;
+  const lo = idxs[0], hi = idxs[idxs.length - 1];
+  for (let k = lo; k <= hi; k++) if (CERT_HANGUL_SYL.test(syms[k].text)) return null;
+  const core = syms.slice(lo, hi + 1), korCore = core.map(s => s.text).join('');
+  if (!/[0-9A-Za-z]/.test(korCore)) return null;
+  const x0 = Math.min(...core.map(s => s.bbox.x0)), x1 = Math.max(...core.map(s => s.bbox.x1));
+  const y0 = Math.min(...core.map(s => s.bbox.y0)), y1 = Math.max(...core.map(s => s.bbox.y1));
+  const wFirst = core[0].bbox.x1 - core[0].bbox.x0, wLast = core[core.length - 1].bbox.x1 - core[core.length - 1].bbox.x0;
+  const cx0 = Math.max(0, lo > 0 ? x0 + 0.1 * wFirst : x0 - 4), cy0 = Math.max(0, y0 - 8);
+  const cx1 = Math.min(grayCanvas.width, x1 - 0.15 * wLast), cy1 = Math.min(grayCanvas.height, y1 + 8);
+  const cw = cx1 - cx0, ch = cy1 - cy0;
+  if (cw < 4 || ch < 4) return null;
+  const crop = certOcrCanvas(cw + 60, ch + 60);
+  crop.getContext('2d').drawImage(grayCanvas, cx0, cy0, cw, ch, 30, 30, cw, ch);
+  const worker = await certOcrWorker('eng');
+  await worker.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: CERT_DIGIT_WHITELIST, user_defined_dpi: '300' });
+  const { data } = await worker.recognize(crop);
+  const eng = (data.text || '').replace(/\s+/g, '');
+  const fixed = certReconcileDigitToken(korCore, eng);
+  if (!fixed || fixed === korCore) return null;
+  return syms.slice(0, lo).map(s => s.text).join('') + fixed + syms.slice(hi + 1).map(s => s.text).join('');
+}
+async function certBuildDigitRefinedPage(rawText, words, grayCanvas) {
+  let out = '', last = 0, cursor = 0, done = 0;
+  for (const w of words) {
+    if (done >= 80) break;
+    if (!w.text || !/[0-9A-Za-z]/.test(w.text)) continue;
+    const idx = rawText.indexOf(w.text, cursor);
+    if (idx < 0) continue;
+    let replaced = null;
+    try { replaced = await certRefineWordWithEnglish(w, grayCanvas); } catch (e) { console.error('영어 재인식 실패', e); }
+    done++;
+    if (replaced) { out += rawText.slice(last, idx) + replaced; last = idx + w.text.length; }
+    cursor = idx + w.text.length;
+  }
+  return out + rawText.slice(last);
+}
+async function certOcrCanvases(canvases, useDigit) {
+  const passData = CERT_OCR.passes.map(() => ({ texts: [], words: [], confs: [] }));
+  const pageVariants = [];
+  for (const src of canvases) {
+    const variants = certOcrVariants(src);
+    pageVariants.push(variants);
+    for (let k = 0; k < CERT_OCR.passes.length; k++) {
+      const p = CERT_OCR.passes[k];
+      try {
+        const r = await certOcrRecognize(variants[p.variant], p.lang, p.psm);
+        passData[k].texts.push(r.text); passData[k].words.push(r.words); passData[k].confs.push(r.conf);
+      } catch (e) { console.error('OCR 실패', p, e); }
+    }
+  }
+  const cands = passData.map((r, k) => ({ k, r })).filter(c => c.r.texts.length > 0).map(c => ({
+    k: c.k, raw: c.r.texts, text: certOcrNormalize(c.r.texts.join('\n')),
+    conf: c.r.confs.reduce((a, b) => a + b, 0) / c.r.confs.length
+  })).filter(c => c.text.trim().length > 0).sort((a, b) => b.conf - a.conf);
+  if (!cands.length) return { text: '', alts: [], digitText: '' };
+  const primary = cands[0].text;
+  const alts = cands.slice(1).map(c => c.text).filter(t => t !== primary);
+  let digitText = '';
+  if (useDigit) {
+    try {
+      const best = cands[0], pages = [];
+      for (let pi = 0; pi < best.raw.length; pi++) pages.push(await certBuildDigitRefinedPage(best.raw[pi], passData[best.k].words[pi] || [], pageVariants[pi].gray));
+      const refined = certOcrNormalize(pages.join('\n'));
+      if (refined !== primary) digitText = refined;
+    } catch (e) { console.error('영어·숫자 재인식 실패', e); }
+  }
+  return { text: primary, alts, digitText };
+}
+async function certRenderPdfPages(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const n = Math.min(pdf.numPages, CERT_OCR.maxPages), canvases = [];
+  for (let p = 1; p <= n; p++) {
+    const page = await pdf.getPage(p);
+    const v1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(8, CERT_OCR.targetLongSide / Math.max(v1.width, v1.height));
+    const vp = page.getViewport({ scale });
+    const canvas = certOcrCanvas(vp.width, vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    canvases.push(canvas);
+  }
+  return canvases;
+}
+/* PDF 한 개에서 텍스트를 얻는다: 글자층이 있으면 그대로, 없으면(20자 미만) OCR. 반환 { text, alts, digitText, ocr } */
+async function certPdfExtract(file, useDigit, onOcrStart) {
+  if (file && file.demoText != null) return { text: file.demoText, alts: [], digitText: '', ocr: false };
+  const text = await certPdfText(file);
+  if (text.trim().length >= 20) return { text, alts: [], digitText: '', ocr: false };
+  if (!window.Tesseract) throw new Error('글자층이 없는 PDF인데 OCR 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해주세요.');
+  if (onOcrStart) onOcrStart();
+  const canvases = await certRenderPdfPages(file);
+  const r = await certOcrCanvases(canvases, useDigit);
+  if (r.text.trim().length < 5) throw new Error('OCR로도 글자를 읽지 못했습니다. 해상도가 낮거나 손상된 PDF일 수 있습니다.');
+  return { ...r, ocr: true };
+}
+/* 규칙 적용: OCR 보정본(숫자 위치) → 기본 텍스트 → 못 찾으면 보조 OCR 텍스트 순으로 시도 (파일관리자 앱과 동일) */
+function certParseAny(ex, rule, pos, digitPos) {
+  if (digitPos && pos === digitPos && ex.digitText) {
+    const r0 = certParseRule(ex.digitText, rule);
+    if (r0 && r0 !== '미확인') return r0;
+  }
+  let r = certParseRule(ex.text, rule);
+  if ((r === '미확인' || r === '') && rule && rule.key && ex.alts && ex.alts.length) {
+    for (const alt of ex.alts) { const r2 = certParseRule(alt, rule); if (r2 && r2 !== '미확인') return r2; }
+  }
+  return r;
+}
+
 
 /* 날짜 문자열 → yyyy-mm-dd (여러 날짜가 있으면 마지막 것) */
 function normalizeCertDate(s) {
@@ -1348,6 +1566,7 @@ function normalizeCertDate(s) {
        name       : 프리셋 목록에 표시될 이름
        removeWord : 모든 추출값에서 지울 글자(파일관리자의 "결과값에서 삭제할 단어")
        activeCount: 화면에 보여줄 추출값 칸 수(최대 9)
+       digitPos   : OCR로 읽을 때 숫자·영문을 영어 전용 OCR로 다시 읽어 보정할 추출위치(0=사용 안 함, 1~9). 이수증번호처럼 숫자가 중요한 위치에 지정
        rules      : 파일관리자 프리셋의 rules 와 같은 형식(key/dir/idx/range/keyEnd), 1~9번째 = 추출값1~9
        field      : 그 추출값을 이수현황의 어느 항목으로 쓸지
                     'affil'(소속) | 'name'(성명) | 'lecture'(강의명) | 'date'(수료날짜) | 'org'(발급기관) | 'number'(이수증번호) | 없음(사용 안 함)
@@ -1355,7 +1574,7 @@ function normalizeCertDate(s) {
 const CERT_FIELD_LABEL = { affil: '소속', name: '성명', lecture: '강의명', date: '수료날짜', org: '발급기관', number: '번호' };
 const CERT_PRESETS = [
   {
-    name: '나라배움터 등 계열 교육 수료증', removeWord: '에서', activeCount: 7,
+    name: '나라배움터 등 계열 교육 수료증', removeWord: '에서', activeCount: 7, digitPos: 0,
     rules: [
       { key: '소속', dir: 'after', idx: '1', range: 'line', field: 'affil' },
       { key: '직급', dir: 'after', idx: '1', range: 'word' },
@@ -1367,7 +1586,7 @@ const CERT_PRESETS = [
     ]
   },
   {
-    name: '한국보건복지인재원 교육 수료증', removeWord: '', activeCount: 9,
+    name: '한국보건복지인재원 교육 수료증', removeWord: '', activeCount: 9, digitPos: 0,
     rules: [
       { key: '속:', dir: 'after', idx: '1', range: 'line', field: 'affil' },
       { key: '름:', dir: 'after', idx: '1', range: 'line', field: 'name' },
@@ -1382,7 +1601,7 @@ const CERT_PRESETS = [
   },
   {
     // ※ 3번째(')' 앞 4글자)가 무엇인지는 실제 수료증으로 확인이 필요합니다. 이 형식에는 소속이 없어 소속 항목은 비어 있습니다.
-    name: '서울시평생학습포털 교육 수료증', removeWord: '', activeCount: 9,
+    name: '서울시평생학습포털 교육 수료증', removeWord: '', activeCount: 9, digitPos: 6,
     rules: [
       { key: '성 명', dir: 'between', idx: '1', range: 'word', keyEnd: '(', field: 'name' },
       { key: '강의명', dir: 'after', idx: '1', range: 'line', field: 'lecture' },
@@ -1397,7 +1616,7 @@ const CERT_PRESETS = [
   },
   {
     // ※ 1~4번째 ": " 위치가 각각 어떤 항목인지는 실제 수료증으로 확인이 필요합니다(추정값). 맞지 않으면 field 만 바꿔주세요.
-    name: '경기도지식 교육 수료증', removeWord: '', activeCount: 9,
+    name: '경기도지식 교육 수료증', removeWord: '', activeCount: 9, digitPos: 6,
     rules: [
       { key: ': ', dir: 'after', idx: '1', range: 'word', field: 'name' },
       { key: ': ', dir: 'after', idx: '2', range: 'line', field: 'lecture' },
@@ -1581,7 +1800,7 @@ function renderCertSheet() {
   }
   head.innerHTML = h + '<th style="width:80px;">상태</th><th style="min-width:170px;">이수현황에 반영할 의무교육</th><th style="min-width:130px;">반영할 직원</th><th style="min-width:150px;">반영 결과</th></tr>';
 
-  const stLabel = { ready: '대기중', processing: '처리중', done: '완료', failed: '실패' };
+  const stLabel = { ready: '대기중', processing: '처리중', ocr: 'OCR 인식중', done: '완료', failed: '실패' };
   const courses = Object.values(state.employeeCourseCache || {});
   const roster = (state.deptRoster || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   const existing = certExistingKeys();
@@ -1621,12 +1840,12 @@ async function runCertSheet(mode) {
   for (const it of targets) {
     it.status = 'processing'; it.err = ''; renderCertSheet();
     try {
-      const text = await certPdfText(it.file);
-      if (text.trim().length < 20) throw new Error('글자를 읽을 수 없는 PDF입니다(스캔본). 기관 사이트에서 PDF로 다시 저장해주세요.');
+      const ex = await certPdfExtract(it.file, (preset.digitPos || 0) > 0, () => { it.status = 'ocr'; renderCertSheet(); });
+      it.status = 'processing';
       const vals = [];
       for (let i = 0; i < 9; i++) {
         const rule = preset.rules[i];
-        let v = rule && rule.key ? certParseRule(text, rule) : '';
+        let v = rule && rule.key ? certParseAny(ex, rule, i + 1, preset.digitPos || 0) : '';
         if (v && v !== '미확인' && preset.removeWord && v.indexOf(preset.removeWord) !== -1) v = v.split(preset.removeWord).join('').trim();
         vals.push(v || '');
       }
@@ -1645,7 +1864,7 @@ async function submitCertSheet() {
   const preset = certSheetPreset();
   if (!preset) return alert('먼저 프리셋 목록에서 이수증 형식을 선택해주세요.');
   if (!certSheet.items.length) return alert('먼저 이수증을 올리고 실행해주세요.');
-  if (certSheet.items.some(it => it.status === 'ready' || it.status === 'processing')) return alert('아직 실행하지 않은 파일이 있습니다. 먼저 [전체 실행]을 눌러주세요.');
+  if (certSheet.items.some(it => it.status === 'ready' || it.status === 'processing' || it.status === 'ocr')) return alert('아직 실행하지 않은 파일이 있습니다. 먼저 [전체 실행]을 눌러주세요.');
   const okItems = certSheet.items.filter(it => it.status === 'done');
   if (!okItems.length) return alert('제출할 수 있는 추출 결과가 없습니다. 다시 실행해주세요.');
   if (okItems.length > CERT_MAX_ROWS) return alert('한 번에 제출할 수 있는 이수증은 최대 ' + CERT_MAX_ROWS + '건입니다.');
