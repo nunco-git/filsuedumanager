@@ -242,7 +242,7 @@
         <p id="superEmailError" class="form-hint" style="color:#dc2626;"></p>
       </div>
       <div id="superEmailSentNote" class="status-banner ok hidden">
-        입력하신 메일로 인증 링크를 보냈습니다. 메일함(스팸함 포함)을 확인해 링크를 눌러주세요. <strong>반드시 지금 이 브라우저(이 기기)에서</strong> 링크를 눌러야 Google 로그인 세션과 연결되어 인증이 완료됩니다.
+        입력하신 메일로 인증 링크를 보냈습니다. 메일함(스팸함 포함)에서 링크를 누르면 <strong>이 화면이 자동으로 이어집니다.</strong> 이 화면은 닫지 말고, <strong>같은 브라우저(이 기기)</strong>에서 링크를 열어주세요.
       </div>
     </div>
 
@@ -719,6 +719,7 @@ function showView(viewId) {
 
 function logout() {
   loginTier = '3';
+  if (typeof stopSuperLinkWatcher === 'function') stopSuperLinkWatcher();
   if (window.resetCertSheet) resetCertSheet();
   if (auth) auth.signOut();
   if (state.mgrStatusUnsub) { state.mgrStatusUnsub(); state.mgrStatusUnsub = null; }
@@ -855,7 +856,49 @@ function sendSuperAdminVerification() {
     localStorage.setItem('superAdminPendingUid', auth.currentUser.uid);
     document.getElementById('superEmailStep').classList.add('hidden');
     document.getElementById('superEmailSentNote').classList.remove('hidden');
+    startSuperLinkWatcher();   // 메일 링크 탭에서 인증이 끝나면 이 화면이 자동으로 이어받도록 대기
   }).catch(e => { errEl.textContent = '메일 발송 실패: ' + e.message; });
+}
+
+/* ---- 메일 링크 탭에서 인증이 끝나면 원래 탭이 이어받기 ---- */
+const superLinkChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('super-admin-link') : null;
+let superLinkTimer = null;
+
+function stopSuperLinkWatcher() { clearInterval(superLinkTimer); superLinkTimer = null; }
+
+async function checkSuperLinked() {
+  const u = auth && auth.currentUser;
+  if (!u || state.role === 'super') return false;
+  try { await u.reload(); } catch (e) { return false; }   // 서버의 최신 연결 정보 반영
+  if (!findLinkedSuperEmail(u)) return false;
+  stopSuperLinkWatcher();
+  if (superLinkChannel) superLinkChannel.postMessage('ack'); // 메일 탭에게 "내가 이어받았다" 알림
+  document.getElementById('superEmailSentNote').classList.add('hidden');
+  await afterSuperAdminAuthenticated(u);
+  return true;
+}
+
+function startSuperLinkWatcher() {
+  stopSuperLinkWatcher();
+  superLinkTimer = setInterval(checkSuperLinked, 3000);      // 안전장치: 3초마다 확인
+}
+
+if (superLinkChannel) {
+  superLinkChannel.onmessage = (ev) => {
+    if (ev.data !== 'linked') return;
+    if (superLinkTimer) checkSuperLinked();                  // 대기 중이면 즉시 확인
+    else if (state.role === 'super') superLinkChannel.postMessage('ack');
+  };
+}
+
+// 메일 링크 탭에서 호출: 원래 탭이 살아 있으면 true
+function handOverToOriginalTab() {
+  return new Promise(resolve => {
+    if (!superLinkChannel) return resolve(false);
+    const t = setTimeout(() => resolve(false), 3000);
+    superLinkChannel.onmessage = ev => { if (ev.data === 'ack') { clearTimeout(t); resolve(true); } };
+    superLinkChannel.postMessage('linked');
+  });
 }
 
 // 이메일로 받은 링크를 눌러 돌아왔을 때: 현재 Google 로그인 세션에 이 이메일 인증을 연결(2단계 완료)
@@ -886,7 +929,13 @@ async function completeSuperAdminEmailLink() {
     localStorage.removeItem('superAdminPendingEmail');
     localStorage.removeItem('superAdminPendingUid');
     window.history.replaceState({}, document.title, window.location.pathname);
-    await afterSuperAdminAuthenticated(user);
+    const handedOver = await handOverToOriginalTab();
+    if (handedOver) {
+      document.body.innerHTML = '<div style="font-family:sans-serif; text-align:center; margin-top:20vh; font-size:18px;">✅ 인증이 완료되었습니다.<br/>원래 화면에서 계속 진행됩니다. 이 창은 닫으셔도 됩니다.</div>';
+      window.close();   // 브라우저 정책상 안 닫히면 위 안내만 남습니다
+    } else {
+      await afterSuperAdminAuthenticated(user);   // 원래 탭이 없으면 이 탭에서 그대로 진행
+    }
   } catch (e) {
     window.history.replaceState({}, document.title, window.location.pathname);
     if (e.code === 'auth/credential-already-in-use' || e.code === 'auth/email-already-in-use') {
